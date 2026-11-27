@@ -784,7 +784,7 @@ private fun GeminiContactChoiceCard(
                             fontWeight = FontWeight.Bold,
                             color = Color(0xFF1A73E8)
                         )
-                        contact.phoneNumber?.let { num ->
+                        contact.phoneHint?.let { num ->
                             Text(
                                 text = num,
                                 fontSize = 14.sp,
