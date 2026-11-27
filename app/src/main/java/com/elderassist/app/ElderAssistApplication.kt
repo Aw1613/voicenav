@@ -4,6 +4,7 @@ import android.app.Application
 import android.content.Context
 import com.elderassist.app.accessibility.AccessibilityExecutor
 import com.elderassist.app.accessibility.AccessibilityTreeReader
+import com.elderassist.app.data.history.ActivityHistoryRepository
 import com.elderassist.app.execution.ActionDispatcher
 import com.elderassist.app.execution.ActionValidator
 import com.elderassist.app.execution.ActionVerifier
@@ -22,10 +23,12 @@ import com.elderassist.app.intelligence.GeminiClient
 import com.elderassist.app.intelligence.GeminiIntentInterpreter
 import com.elderassist.app.intelligence.GeneralNavigationAgent
 import com.elderassist.app.intelligence.HttpGeminiClient
+import com.elderassist.app.permissions.PermissionStateRepository
 import com.elderassist.app.settings.AppSettings
 
 class AppContainer(context: Context) {
     val appSettings = AppSettings(context)
+    val historyRepository = ActivityHistoryRepository.create(context)
 
     private val speechProvider = AndroidSpeechRecognizerProvider(context)
     private val ttsSpeaker = TextToSpeechSpeaker(context)
@@ -34,7 +37,7 @@ class AppContainer(context: Context) {
     val intentExecutor = IntentExecutor(context)
     private val settingsHandler = SettingsActionHandler(intentExecutor)
 
-    private val contactsRepository = ContactsRepository(context)
+    val contactsRepository = ContactsRepository(context)
     private val contactsHandler = ContactsActionHandler(contactsRepository, intentExecutor)
 
     private val treeReader = AccessibilityTreeReader()
@@ -58,6 +61,11 @@ class AppContainer(context: Context) {
         geminiClient = geminiClient,
         actionPlanner = actionPlanner,
         taskRunner = taskRunner
+    )
+
+    val permissionRepository = PermissionStateRepository(
+        context = context,
+        isGeminiConfigured = { geminiClient.isConfigured() }
     )
 }
 

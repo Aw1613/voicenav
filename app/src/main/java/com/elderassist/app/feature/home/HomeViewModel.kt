@@ -1,27 +1,35 @@
 package com.elderassist.app.feature.home
 
-import android.Manifest
 import android.app.Application
-import android.content.pm.PackageManager
-import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.elderassist.app.ElderAssistApplication
 import com.elderassist.app.accessibility.AccessibilityServiceState
 import com.elderassist.app.core.model.ActionExecutionResult
+import com.elderassist.app.core.model.ActionId
 import com.elderassist.app.core.model.ActionSource
 import com.elderassist.app.core.model.AssistantAction
 import com.elderassist.app.core.model.AssistantMode
+import com.elderassist.app.core.model.AssistantUiState
 import com.elderassist.app.core.model.ClarificationOption
 import com.elderassist.app.core.model.ContactCandidate
+import com.elderassist.app.core.model.ContactProposal
 import com.elderassist.app.core.model.ExecutionContext
+import com.elderassist.app.core.model.Recovery
 import com.elderassist.app.core.model.SettingDestination
 import com.elderassist.app.core.model.SupportedApp
 import com.elderassist.app.core.model.TaskStatus
+import com.elderassist.app.data.history.ActivityEvent
+import com.elderassist.app.data.history.ActivityOutcome
 import com.elderassist.app.feature.voice.SpeechState
 import com.elderassist.app.intelligence.IntentInterpretationResult
 import com.elderassist.app.intelligence.NavigationAgentOutcome
 import com.elderassist.app.intelligence.RoutingResult
+import com.elderassist.app.permissions.CapabilitySnapshot
+import com.elderassist.app.settings.AppTextScale
+import com.elderassist.app.settings.AppThemeMode
+import com.elderassist.app.settings.FeedbackLevel
+import com.elderassist.app.settings.SpeechSpeed
 import com.elderassist.app.settings.UserPreferences
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -35,7 +43,8 @@ data class PendingConfirmation(
     val title: String,
     val previewMessage: String,
     val action: AssistantAction,
-    val source: ActionSource
+    val source: ActionSource,
+    val proposal: ContactProposal? = null
 )
 
 data class PendingContactChoice(
@@ -50,14 +59,17 @@ data class PendingClarification(
 )
 
 data class HomeUiState(
+    val assistantState: AssistantUiState = AssistantUiState.Idle,
     val status: TaskStatus = TaskStatus.IDLE,
     val statusHeadline: String = "Tap the microphone and tell me what you want to do.",
     val statusDetail: String? = null,
     val transcript: String = "",
     val manualInput: String = "",
+    val isTextSheetOpen: Boolean = false,
     val speechState: SpeechState = SpeechState.Idle,
     val isListening: Boolean = false,
     val isBusy: Boolean = false,
+    val capabilities: CapabilitySnapshot = CapabilitySnapshot(),
     val hasMicPermission: Boolean = false,
     val hasContactsPermission: Boolean = false,
     val isAccessibilityEnabled: Boolean = false,
@@ -65,11 +77,13 @@ data class HomeUiState(
     val isGeminiConfigured: Boolean = false,
     val speechProviderName: String = "Android SpeechRecognizer",
     val preferences: UserPreferences = UserPreferences(),
+    val activityHistory: List<ActivityEvent> = emptyList(),
+    val contactSearchQuery: String = "",
+    val contactSearchResults: List<ContactCandidate> = emptyList(),
+    val micTestResult: String? = null,
     val pendingConfirmation: PendingConfirmation? = null,
     val pendingContactChoice: PendingContactChoice? = null,
     val pendingClarification: PendingClarification? = null,
-    val showSetupHelp: Boolean = false,
-    val showSettingsShortcuts: Boolean = false,
     val requestMicPermissionPrompt: Boolean = false,
     val requestContactsPermissionPrompt: Boolean = false
 )
@@ -85,6 +99,7 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     private var activeTaskCancelled: Boolean = false
     private var pendingCommandAfterPermission: String? = null
     private var startListeningAfterMicPermission: Boolean = false
+    private var isMicTestMode: Boolean = false
 
     init {
         refreshEnvironmentState()
@@ -96,14 +111,27 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         }
 
         viewModelScope.launch {
+            container.historyRepository.events.collect { events ->
+                _uiState.update { it.copy(activityHistory = events) }
+            }
+        }
+
+        viewModelScope.launch {
             container.voiceSessionManager.speechState.collect { speechState ->
                 _uiState.update { state ->
-                    val listening = speechState is SpeechState.Listening || speechState is SpeechState.Processing
+                    val listening =
+                        speechState is SpeechState.Listening || speechState is SpeechState.Processing
                     val partial = (speechState as? SpeechState.Listening)?.partialTranscript
+                    val nextAssistantState = when (speechState) {
+                        is SpeechState.Listening -> AssistantUiState.Listening(partial.orEmpty())
+                        is SpeechState.Processing -> AssistantUiState.Processing(state.transcript)
+                        else -> state.assistantState
+                    }
                     state.copy(
                         speechState = speechState,
                         isListening = listening,
-                        transcript = if (!partial.isNullOrBlank()) partial else state.transcript
+                        transcript = if (!partial.isNullOrBlank()) partial else state.transcript,
+                        assistantState = nextAssistantState
                     )
                 }
             }
@@ -117,27 +145,22 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun refreshEnvironmentState() {
-        val ctx = getApplication<Application>()
-        val hasMic = ContextCompat.checkSelfPermission(
-            ctx,
-            Manifest.permission.RECORD_AUDIO
-        ) == PackageManager.PERMISSION_GRANTED
-        val hasContacts = ContextCompat.checkSelfPermission(
-            ctx,
-            Manifest.permission.READ_CONTACTS
-        ) == PackageManager.PERMISSION_GRANTED
-        val accessibilityEnabled = AccessibilityServiceState.isAvailable(ctx)
-
+        val caps = container.permissionRepository.refresh()
         _uiState.update {
             it.copy(
-                hasMicPermission = hasMic,
-                hasContactsPermission = hasContacts,
-                isAccessibilityEnabled = accessibilityEnabled,
+                capabilities = caps,
+                hasMicPermission = caps.microphoneGranted,
+                hasContactsPermission = caps.contactsReadGranted,
+                isAccessibilityEnabled = caps.accessibilityEnabled,
                 isSpeechRecognitionAvailable = container.voiceSessionManager.isSpeechAvailable(),
-                isGeminiConfigured = container.geminiClient.isConfigured(),
+                isGeminiConfigured = caps.geminiKeyConfigured,
                 speechProviderName = container.voiceSessionManager.providerName
             )
         }
+    }
+
+    fun setTextSheetOpen(open: Boolean) {
+        _uiState.update { it.copy(isTextSheetOpen = open) }
     }
 
     fun onManualInputChanged(value: String) {
@@ -151,11 +174,13 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
             return
         }
 
+        isMicTestMode = false
         if (!_uiState.value.hasMicPermission) {
             startListeningAfterMicPermission = true
             _uiState.update {
                 it.copy(
                     requestMicPermissionPrompt = true,
+                    assistantState = AssistantUiState.NeedsSetup(it.capabilities.missingCapabilities()),
                     status = TaskStatus.IDLE,
                     statusHeadline = "Please allow Microphone access so I can hear your request."
                 )
@@ -166,6 +191,21 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         startListeningInternal()
     }
 
+    fun testMicrophone() {
+        refreshEnvironmentState()
+        if (_uiState.value.isListening) {
+            container.voiceSessionManager.stopListening()
+            return
+        }
+        isMicTestMode = true
+        if (!_uiState.value.hasMicPermission) {
+            startListeningAfterMicPermission = true
+            _uiState.update { it.copy(requestMicPermissionPrompt = true) }
+            return
+        }
+        startListeningInternal(testOnly = true)
+    }
+
     fun onMicPermissionResult(granted: Boolean) {
         _uiState.update { it.copy(requestMicPermissionPrompt = false) }
         refreshEnvironmentState()
@@ -173,12 +213,17 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         startListeningAfterMicPermission = false
 
         if (granted && shouldStart) {
-            startListeningInternal()
+            startListeningInternal(testOnly = isMicTestMode)
         } else if (!granted) {
+            isMicTestMode = false
             setFeedback(
                 status = TaskStatus.FAILED,
-                headline = "Microphone permission was denied. You can still type your request below.",
-                speak = true
+                assistantState = AssistantUiState.Failure(
+                    userMessage = "Microphone permission was denied. You can still type your request.",
+                    recovery = Recovery.OPEN_PERMISSIONS
+                ),
+                headline = "Microphone permission was denied. You can still type your request.",
+                important = true
             )
         }
     }
@@ -189,18 +234,23 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         val pending = pendingCommandAfterPermission
         pendingCommandAfterPermission = null
 
-        if (granted && !pending.isNullOrBlank()) {
-            submitCommand(pending)
-        } else if (!granted) {
+        if (granted) {
+            val inlineQuery = _uiState.value.contactSearchQuery
+            if (inlineQuery.isNotBlank()) {
+                searchContactsInline(inlineQuery)
+            }
+            if (!pending.isNullOrBlank()) {
+                submitCommand(pending)
+            }
+        } else {
             setFeedback(
                 status = TaskStatus.FAILED,
-                headline = "Contacts permission is needed to search contacts by name. Opening Contacts instead.",
-                speak = true
-            )
-            executeDirectAction(
-                action = AssistantAction.OpenApp(SupportedApp.CONTACTS),
-                source = ActionSource.DETERMINISTIC,
-                summary = "Opening Contacts."
+                assistantState = AssistantUiState.Failure(
+                    userMessage = "Contacts permission is needed to search contacts by name.",
+                    recovery = Recovery.OPEN_PERMISSIONS
+                ),
+                headline = "Contacts permission is needed to search contacts by name.",
+                important = true
             )
         }
     }
@@ -208,7 +258,7 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     fun submitManualCommand() {
         val text = _uiState.value.manualInput.trim()
         if (text.isEmpty()) return
-        _uiState.update { it.copy(manualInput = "") }
+        _uiState.update { it.copy(manualInput = "", isTextSheetOpen = false) }
         submitCommand(text)
     }
 
@@ -224,6 +274,71 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     fun selectClarificationOption(option: ClarificationOption) {
         _uiState.update { it.copy(pendingClarification = null) }
         submitCommand(option.canonicalUtterance)
+    }
+
+    fun onContactSearchQueryChanged(query: String) {
+        _uiState.update { it.copy(contactSearchQuery = query) }
+        if (query.isBlank()) {
+            _uiState.update { it.copy(contactSearchResults = emptyList()) }
+        } else if (_uiState.value.hasContactsPermission) {
+            searchContactsInline(query)
+        }
+    }
+
+    fun searchContactsInline(query: String) {
+        refreshEnvironmentState()
+        if (!_uiState.value.hasContactsPermission) {
+            _uiState.update { it.copy(requestContactsPermissionPrompt = true) }
+            return
+        }
+        val matches = container.contactsRepository.searchContacts(query)
+        _uiState.update { it.copy(contactSearchResults = matches) }
+    }
+
+    fun proposeCreateContact(displayName: String, phone: String) {
+        val cleanName = displayName.trim()
+        val cleanPhone = phone.trim()
+        if (cleanName.isEmpty() || cleanPhone.filter { it.isDigit() }.length < 3) {
+            setFeedback(
+                status = TaskStatus.FAILED,
+                assistantState = AssistantUiState.Failure("Please enter both a name and a valid phone number."),
+                headline = "Please enter both a name and a valid phone number.",
+                important = true
+            )
+            return
+        }
+        executeDirectAction(
+            action = AssistantAction.CreateContact(cleanName, cleanPhone),
+            source = ActionSource.DETERMINISTIC,
+            summary = "Preparing to save $cleanName."
+        )
+    }
+
+    fun proposeRenameContact(oldName: String, newName: String) {
+        val cleanOld = oldName.trim()
+        val cleanNew = newName.trim()
+        if (cleanOld.isEmpty() || cleanNew.isEmpty()) {
+            setFeedback(
+                status = TaskStatus.FAILED,
+                assistantState = AssistantUiState.Failure("Please enter both the current name and the new name."),
+                headline = "Please enter both the current name and the new name.",
+                important = true
+            )
+            return
+        }
+        if (!_uiState.value.hasContactsPermission) {
+            pendingCommandAfterPermission = "rename $cleanOld to $cleanNew"
+            _uiState.update { it.copy(requestContactsPermissionPrompt = true) }
+            return
+        }
+        executeDirectAction(
+            action = AssistantAction.RenameContact(
+                currentDisplayName = cleanOld,
+                newDisplayName = cleanNew
+            ),
+            source = ActionSource.DETERMINISTIC,
+            summary = "Preparing to rename $cleanOld."
+        )
     }
 
     fun selectContactCandidate(candidate: ContactCandidate) {
@@ -244,18 +359,26 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
             )
         } else {
             val phoneDetail = candidate.phoneHint?.let { " (phone $it)" }.orEmpty()
+            val message = "Found ${candidate.displayName}$phoneDetail."
             setFeedback(
                 status = TaskStatus.COMPLETED,
-                headline = "Selected ${candidate.displayName}$phoneDetail.",
-                detail = "You can open Contacts to view or edit their full details.",
-                speak = true
+                assistantState = AssistantUiState.Success(message),
+                headline = message,
+                detail = "You can open Contacts to view full details.",
+                important = false
             )
+            recordHistory(AssistantAction.SearchContact(choice.query), ActivityOutcome.SUCCESS)
         }
     }
 
     fun dismissContactSelection() {
         _uiState.update { it.copy(pendingContactChoice = null) }
-        setFeedback(TaskStatus.CANCELLED, "Cancelled contact selection.", speak = false)
+        setFeedback(
+            status = TaskStatus.CANCELLED,
+            assistantState = AssistantUiState.Idle,
+            headline = "Cancelled contact selection.",
+            important = false
+        )
     }
 
     fun confirmPendingAction() {
@@ -270,11 +393,16 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun cancelPendingAction() {
+        val pending = _uiState.value.pendingConfirmation
         _uiState.update { it.copy(pendingConfirmation = null) }
+        if (pending != null) {
+            recordHistory(pending.action, ActivityOutcome.CANCELLED)
+        }
         setFeedback(
             status = TaskStatus.CANCELLED,
+            assistantState = AssistantUiState.Idle,
             headline = "Cancelled. No changes were saved.",
-            speak = true
+            important = true
         )
     }
 
@@ -282,6 +410,7 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         activeTaskCancelled = true
         activeTaskJob?.cancel()
         activeTaskJob = null
+        isMicTestMode = false
         container.voiceSessionManager.cancelListening()
         _uiState.update {
             it.copy(
@@ -294,13 +423,13 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         }
         setFeedback(
             status = TaskStatus.CANCELLED,
+            assistantState = AssistantUiState.Idle,
             headline = "Stopped.",
-            speak = true
+            important = true
         )
     }
 
     fun openQuickSetting(destination: SettingDestination) {
-        _uiState.update { it.copy(showSettingsShortcuts = false) }
         executeDirectAction(
             action = AssistantAction.OpenSetting(destination),
             source = ActionSource.DETERMINISTIC,
@@ -316,17 +445,20 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         )
     }
 
-    fun setShowSettingsShortcuts(show: Boolean) {
-        _uiState.update { it.copy(showSettingsShortcuts = show) }
-    }
-
-    fun setShowSetupHelp(show: Boolean) {
-        refreshEnvironmentState()
-        _uiState.update { it.copy(showSetupHelp = show) }
+    fun triggerGlobalAction(action: AssistantAction) {
+        executeDirectAction(
+            action = action,
+            source = ActionSource.DETERMINISTIC,
+            summary = "Navigating..."
+        )
     }
 
     fun openAccessibilitySettings() {
         container.intentExecutor.openAccessibilitySettings()
+    }
+
+    fun openAppDetailsSettings() {
+        container.intentExecutor.openAppDetailsSettings()
     }
 
     fun requestMicPermission() {
@@ -338,6 +470,14 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         _uiState.update { it.copy(requestContactsPermissionPrompt = true) }
     }
 
+    fun setMasterAiEnabled(enabled: Boolean) {
+        viewModelScope.launch { container.appSettings.setMasterAiEnabled(enabled) }
+    }
+
+    fun toggleExperimentalAiNavigation(enabled: Boolean) {
+        viewModelScope.launch { container.appSettings.setExperimentalAiNavigationEnabled(enabled) }
+    }
+
     fun toggleTts(enabled: Boolean) {
         viewModelScope.launch {
             container.appSettings.setTtsEnabled(enabled)
@@ -345,10 +485,59 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun toggleExperimentalAiNavigation(enabled: Boolean) {
+    fun setSpeechLanguageTag(tag: String) {
+        viewModelScope.launch { container.appSettings.setSpeechLanguageTag(tag) }
+    }
+
+    fun setSpeechSpeed(speed: SpeechSpeed) {
+        viewModelScope.launch { container.appSettings.setSpeechSpeed(speed) }
+    }
+
+    fun setFeedbackLevel(level: FeedbackLevel) {
+        viewModelScope.launch { container.appSettings.setFeedbackLevel(level) }
+    }
+
+    fun setThemeMode(mode: AppThemeMode) {
+        viewModelScope.launch { container.appSettings.setThemeMode(mode) }
+    }
+
+    fun setTextScale(scale: AppTextScale) {
+        viewModelScope.launch { container.appSettings.setTextScale(scale) }
+    }
+
+    fun setHapticsEnabled(enabled: Boolean) {
+        viewModelScope.launch { container.appSettings.setHapticsEnabled(enabled) }
+    }
+
+    fun setNotificationsEnabled(enabled: Boolean) {
+        viewModelScope.launch { container.appSettings.setNotificationsEnabled(enabled) }
+    }
+
+    fun resetPreferences() {
         viewModelScope.launch {
-            container.appSettings.setExperimentalAiNavigationEnabled(enabled)
+            container.appSettings.resetToDefaults()
+            setFeedback(
+                status = TaskStatus.COMPLETED,
+                assistantState = AssistantUiState.Success("App preferences reset to defaults."),
+                headline = "App preferences reset to defaults.",
+                important = false
+            )
         }
+    }
+
+    fun clearActivityHistory() {
+        viewModelScope.launch {
+            container.historyRepository.clearHistory()
+        }
+    }
+
+    fun speakExamplePhrase(phrase: String) {
+        val prefs = _uiState.value.preferences
+        container.voiceSessionManager.speakExample(
+            message = phrase,
+            speechRate = prefs.speechSpeed.rate,
+            languageTag = prefs.speechLanguageTag
+        )
     }
 
     fun submitCommand(rawText: String) {
@@ -362,6 +551,7 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
             it.copy(
                 transcript = text,
                 isBusy = true,
+                assistantState = AssistantUiState.Processing(text),
                 status = TaskStatus.INTERPRETING,
                 statusHeadline = "Understanding your request...",
                 statusDetail = null,
@@ -372,7 +562,8 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         }
 
         activeTaskJob = viewModelScope.launch {
-            val mode = if (_uiState.value.preferences.experimentalAiNavigationEnabled) {
+            val prefs = _uiState.value.preferences
+            val mode = if (prefs.masterAiEnabled && prefs.experimentalAiNavigationEnabled) {
                 AssistantMode.AI_EXPERIMENTAL
             } else {
                 AssistantMode.DETERMINISTIC
@@ -383,14 +574,21 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                     _uiState.update { it.copy(isBusy = false) }
                     setFeedback(
                         status = TaskStatus.FAILED,
+                        assistantState = AssistantUiState.Failure("Please tell me what you would like to do."),
                         headline = "Please tell me what you would like to do.",
-                        speak = true
+                        important = true
                     )
                 }
 
                 RoutingResult.Cancelled -> {
                     _uiState.update { it.copy(isBusy = false) }
-                    setFeedback(TaskStatus.CANCELLED, "Cancelled.", speak = true)
+                    recordHistory(AssistantAction.Cancel, ActivityOutcome.CANCELLED)
+                    setFeedback(
+                        status = TaskStatus.CANCELLED,
+                        assistantState = AssistantUiState.Idle,
+                        headline = "Cancelled.",
+                        important = true
+                    )
                 }
 
                 is RoutingResult.ClarificationRequired -> {
@@ -405,17 +603,23 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                     }
                     setFeedback(
                         status = TaskStatus.AWAITING_CLARIFICATION,
+                        assistantState = AssistantUiState.Idle,
                         headline = routing.question,
-                        speak = true
+                        important = true
                     )
                 }
 
                 is RoutingResult.Unsupported -> {
                     _uiState.update { it.copy(isBusy = false) }
+                    recordHistory(
+                        AssistantAction.Unsupported(routing.message, routing.fallbackDestination),
+                        ActivityOutcome.BLOCKED
+                    )
                     setFeedback(
                         status = TaskStatus.FAILED,
+                        assistantState = AssistantUiState.Failure(routing.message),
                         headline = routing.message,
-                        speak = true
+                        important = true
                     )
                 }
 
@@ -429,10 +633,22 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                 }
 
                 is RoutingResult.NeedsAiInterpretation -> {
-                    handleAiFallback(
-                        originalTranscript = text,
-                        allowExperimentalNavigation = routing.allowExperimentalNavigation
-                    )
+                    if (!prefs.masterAiEnabled) {
+                        _uiState.update { it.copy(isBusy = false) }
+                        setFeedback(
+                            status = TaskStatus.FAILED,
+                            assistantState = AssistantUiState.Failure(
+                                "Master AI is currently paused. Turn it on in Master AI or use a direct command like 'Open Bluetooth'."
+                            ),
+                            headline = "Master AI is paused. Turn it on in Master AI or try a direct command like 'Open Bluetooth'.",
+                            important = true
+                        )
+                    } else {
+                        handleAiFallback(
+                            originalTranscript = text,
+                            allowExperimentalNavigation = routing.allowExperimentalNavigation
+                        )
+                    }
                 }
             }
         }
@@ -457,11 +673,12 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
 
             is IntentInterpretationResult.Rejected -> {
                 if (allowExperimentalNavigation && _uiState.value.isAccessibilityEnabled) {
-                    val service = com.elderassist.app.accessibility.AccessibilityServiceState.activeService()
+                    val service = AccessibilityServiceState.activeService()
                     if (service != null) {
                         _uiState.update {
                             it.copy(
                                 status = TaskStatus.NAVIGATING_AI,
+                                assistantState = AssistantUiState.Executing("Trying guided navigation..."),
                                 statusHeadline = "Trying experimental guided navigation...",
                                 statusDetail = "Maximum 5 safe steps. Tap Stop anytime."
                             )
@@ -478,21 +695,38 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                         )
                         _uiState.update { it.copy(isBusy = false) }
                         when (navOutcome) {
-                            is NavigationAgentOutcome.Finished -> setFeedback(
-                                status = TaskStatus.COMPLETED,
-                                headline = navOutcome.message,
-                                speak = true
-                            )
+                            is NavigationAgentOutcome.Finished -> {
+                                recordHistory(
+                                    AssistantAction.Explain(navOutcome.message),
+                                    ActivityOutcome.SUCCESS
+                                )
+                                setFeedback(
+                                    status = TaskStatus.COMPLETED,
+                                    assistantState = AssistantUiState.Success(navOutcome.message),
+                                    headline = navOutcome.message,
+                                    important = false
+                                )
+                            }
+
                             is NavigationAgentOutcome.NeedsClarification -> setFeedback(
                                 status = TaskStatus.AWAITING_CLARIFICATION,
+                                assistantState = AssistantUiState.Idle,
                                 headline = navOutcome.question,
-                                speak = true
+                                important = true
                             )
-                            is NavigationAgentOutcome.StoppedSafely -> setFeedback(
-                                status = TaskStatus.FAILED,
-                                headline = navOutcome.message,
-                                speak = true
-                            )
+
+                            is NavigationAgentOutcome.StoppedSafely -> {
+                                recordHistory(
+                                    AssistantAction.Unsupported(navOutcome.message),
+                                    ActivityOutcome.BLOCKED
+                                )
+                                setFeedback(
+                                    status = TaskStatus.FAILED,
+                                    assistantState = AssistantUiState.Failure(navOutcome.message),
+                                    headline = navOutcome.message,
+                                    important = true
+                                )
+                            }
                         }
                         return
                     }
@@ -501,9 +735,10 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                 _uiState.update { it.copy(isBusy = false) }
                 setFeedback(
                     status = TaskStatus.FAILED,
+                    assistantState = AssistantUiState.Failure(aiResult.userMessage),
                     headline = aiResult.userMessage,
                     detail = "Try commands like 'Open Bluetooth settings', 'Go home', or 'Find Rahul'.",
-                    speak = true
+                    important = true
                 )
             }
         }
@@ -527,8 +762,9 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
             }
             setFeedback(
                 status = TaskStatus.IDLE,
+                assistantState = AssistantUiState.NeedsSetup(setOf(com.elderassist.app.core.model.Capability.CONTACTS_READ)),
                 headline = "Please allow Contacts access so I can find that contact for you.",
-                speak = true
+                important = true
             )
             return
         }
@@ -548,6 +784,11 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         confirmationGranted: Boolean = false
     ) {
         refreshEnvironmentState()
+        _uiState.update {
+            it.copy(
+                assistantState = AssistantUiState.Executing(summary)
+            )
+        }
         val context = buildExecutionContext(confirmationGranted)
         val plan = container.actionPlanner.createPlan(
             action = action,
@@ -561,28 +802,34 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
 
         when (val result = outcome.result) {
             is ActionExecutionResult.Executed -> {
+                recordHistory(action, ActivityOutcome.SUCCESS)
                 setFeedback(
                     status = TaskStatus.COMPLETED,
+                    assistantState = AssistantUiState.Success(outcome.verification.userMessage),
                     headline = outcome.verification.userMessage,
-                    speak = true
+                    important = false
                 )
             }
 
             is ActionExecutionResult.NeedsConfirmation -> {
+                val proposal = toContactProposal(result.action)
                 _uiState.update {
                     it.copy(
                         pendingConfirmation = PendingConfirmation(
                             title = result.title,
                             previewMessage = result.previewMessage,
                             action = result.action,
-                            source = source
+                            source = source,
+                            proposal = proposal
                         )
                     )
                 }
                 setFeedback(
                     status = TaskStatus.AWAITING_CONFIRMATION,
+                    assistantState = proposal?.let { AssistantUiState.Confirmation(it) }
+                        ?: AssistantUiState.Idle,
                     headline = result.previewMessage,
-                    speak = true
+                    important = true
                 )
             }
 
@@ -598,8 +845,9 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                 }
                 setFeedback(
                     status = TaskStatus.AWAITING_CLARIFICATION,
+                    assistantState = AssistantUiState.Idle,
                     headline = "I found ${result.candidates.size} contacts matching ${result.query}. Please choose one.",
-                    speak = true
+                    important = true
                 )
             }
 
@@ -614,30 +862,50 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                 }
                 setFeedback(
                     status = TaskStatus.AWAITING_CLARIFICATION,
+                    assistantState = AssistantUiState.Idle,
                     headline = result.question,
-                    speak = true
+                    important = true
                 )
             }
 
             is ActionExecutionResult.Failed -> {
+                val recovery = when (action) {
+                    AssistantAction.GoHome,
+                    AssistantAction.GoBack,
+                    AssistantAction.OpenRecents ->
+                        if (!_uiState.value.isAccessibilityEnabled) {
+                            Recovery.OPEN_ACCESSIBILITY_SETTINGS
+                        } else {
+                            Recovery.NONE
+                        }
+                    else -> Recovery.NONE
+                }
+                recordHistory(action, ActivityOutcome.BLOCKED)
                 setFeedback(
                     status = TaskStatus.FAILED,
+                    assistantState = AssistantUiState.Failure(outcome.verification.userMessage, recovery),
                     headline = outcome.verification.userMessage,
-                    speak = true
+                    important = true
                 )
             }
         }
     }
 
-    private fun startListeningInternal() {
+    private fun startListeningInternal(testOnly: Boolean = false) {
         activeTaskJob?.cancel()
         activeTaskCancelled = false
 
         _uiState.update {
             it.copy(
                 status = TaskStatus.LISTENING,
-                statusHeadline = "Listening... Speak clearly, then pause.",
+                assistantState = AssistantUiState.Listening(""),
+                statusHeadline = if (testOnly) {
+                    "Testing microphone... Say a short phrase."
+                } else {
+                    "I am listening. Go ahead and speak..."
+                },
                 statusDetail = null,
+                micTestResult = null,
                 pendingClarification = null,
                 pendingConfirmation = null,
                 pendingContactChoice = null
@@ -648,17 +916,63 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
             val lang = _uiState.value.preferences.speechLanguageTag
             val result = container.voiceSessionManager.listenOnce(lang)
             result.onSuccess { spoken ->
-                submitCommand(spoken)
+                if (testOnly) {
+                    isMicTestMode = false
+                    viewModelScope.launch {
+                        container.historyRepository.record(
+                            actionCode = ActionId.TEST_MIC.code,
+                            outcome = ActivityOutcome.SUCCESS,
+                            userSummary = "Tested microphone successfully"
+                        )
+                    }
+                    _uiState.update {
+                        it.copy(
+                            micTestResult = "Heard clearly: \"$spoken\"",
+                            transcript = spoken
+                        )
+                    }
+                    setFeedback(
+                        status = TaskStatus.COMPLETED,
+                        assistantState = AssistantUiState.Success("Microphone working! Heard: \"$spoken\""),
+                        headline = "Microphone working! Heard: \"$spoken\"",
+                        important = false
+                    )
+                } else {
+                    submitCommand(spoken)
+                }
             }.onFailure { err ->
+                isMicTestMode = false
                 if (!activeTaskCancelled) {
                     val msg = err.message ?: "I couldn't hear that. Please tap the microphone and try again."
+                    _uiState.update { it.copy(micTestResult = msg) }
                     setFeedback(
                         status = TaskStatus.FAILED,
+                        assistantState = AssistantUiState.Failure(msg, Recovery.RETRY_VOICE),
                         headline = msg,
-                        speak = false
+                        important = true
                     )
                 }
             }
+        }
+    }
+
+    private fun toContactProposal(action: AssistantAction): ContactProposal? = when (action) {
+        is AssistantAction.CreateContact -> ContactProposal.Create(
+            displayName = action.displayName,
+            phone = action.phoneNumber
+        )
+        is AssistantAction.RenameContact -> ContactProposal.Rename(
+            contactId = action.contactId,
+            lookupKey = action.lookupKey,
+            oldName = action.currentDisplayName,
+            newName = action.newDisplayName
+        )
+        else -> null
+    }
+
+    private fun recordHistory(action: AssistantAction, outcome: ActivityOutcome) {
+        viewModelScope.launch {
+            container.historyRepository.recordActionOutcome(action, outcome)
         }
     }
 
@@ -670,7 +984,7 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
             isAccessibilityEnabled = s.isAccessibilityEnabled,
             hasReadContactsPermission = s.hasContactsPermission,
             hasRecordAudioPermission = s.hasMicPermission,
-            mode = if (s.preferences.experimentalAiNavigationEnabled) {
+            mode = if (s.preferences.masterAiEnabled && s.preferences.experimentalAiNavigationEnabled) {
                 AssistantMode.AI_EXPERIMENTAL
             } else {
                 AssistantMode.DETERMINISTIC
@@ -681,21 +995,28 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun setFeedback(
         status: TaskStatus,
+        assistantState: AssistantUiState,
         headline: String,
         detail: String? = null,
-        speak: Boolean
+        important: Boolean
     ) {
         _uiState.update {
             it.copy(
                 status = status,
+                assistantState = assistantState,
                 statusHeadline = headline,
                 statusDetail = detail
             )
         }
-        if (speak) {
+        val prefs = _uiState.value.preferences
+        val shouldSpeak = prefs.ttsEnabled &&
+            (prefs.feedbackLevel == FeedbackLevel.EVERY_ACTION || important)
+        if (shouldSpeak) {
             container.voiceSessionManager.speakFeedback(
                 message = headline,
-                ttsEnabled = _uiState.value.preferences.ttsEnabled
+                ttsEnabled = true,
+                speechRate = prefs.speechSpeed.rate,
+                languageTag = prefs.speechLanguageTag
             )
         }
     }

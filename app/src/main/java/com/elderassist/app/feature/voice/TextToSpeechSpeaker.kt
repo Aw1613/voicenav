@@ -25,12 +25,22 @@ class TextToSpeechSpeaker(context: Context) : TextToSpeech.OnInitListener {
         }
     }
 
-    fun speak(message: String) {
+    fun speak(
+        message: String,
+        speechRate: Float = 0.95f,
+        languageTag: String = "en-IN"
+    ) {
         if (message.isBlank()) return
         if (!isReady) {
             pendingUtterance = message
             return
         }
+        val locale = Locale.forLanguageTag(languageTag)
+        val langRes = tts?.isLanguageAvailable(locale) ?: TextToSpeech.LANG_NOT_SUPPORTED
+        if (langRes >= TextToSpeech.LANG_AVAILABLE) {
+            tts?.language = locale
+        }
+        tts?.setSpeechRate(speechRate.coerceIn(0.65f, 1.3f))
         tts?.speak(message, TextToSpeech.QUEUE_FLUSH, null, "elder_assist_utterance")
     }
 
