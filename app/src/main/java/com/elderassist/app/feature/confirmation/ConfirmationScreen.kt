@@ -31,6 +31,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.elderassist.app.feature.home.PendingConfirmation
+import com.elderassist.app.ui.theme.ElderAssistColors
 
 @Composable
 fun ConfirmationDialog(
@@ -42,8 +43,8 @@ fun ConfirmationDialog(
     Dialog(onDismissRequest = onCancel) {
         Card(
             shape = RoundedCornerShape(20.dp),
-            colors = CardDefaults.cardColors(containerColor = Color(0xFFFFFBF2)),
-            border = BorderStroke(2.dp, Color(0xFF9A5800))
+            colors = CardDefaults.cardColors(containerColor = ElderAssistColors.Surface),
+            border = BorderStroke(2.dp, ElderAssistColors.Warning)
         ) {
             Column(
                 modifier = Modifier
@@ -116,8 +117,8 @@ fun ConfirmationDialog(
                             .weight(1f)
                             .height(58.dp),
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = Color(0xFF124E96),
-                            contentColor = Color.White
+                            containerColor = ElderAssistColors.Primary,
+                            contentColor = ElderAssistColors.OnPrimary
                         )
                     ) {
                         Icon(

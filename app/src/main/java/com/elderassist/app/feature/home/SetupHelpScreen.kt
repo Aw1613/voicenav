@@ -21,6 +21,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -33,6 +34,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.elderassist.app.ui.theme.ElderAssistColors
 
 @Composable
 fun SetupHelpScreen(
@@ -54,34 +56,33 @@ fun SetupHelpScreen(
         OutlinedButton(
             onClick = onBack,
             modifier = Modifier.height(54.dp),
-            border = BorderStroke(2.dp, Color(0xFF124E96))
+            border = BorderStroke(2.dp, ElderAssistColors.Primary)
         ) {
             Icon(
                 imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                 contentDescription = null,
-                tint = Color(0xFF124E96)
+                tint = ElderAssistColors.Primary
             )
             Spacer(modifier = Modifier.padding(4.dp))
             Text(
                 text = "Back to Home",
                 fontSize = 18.sp,
                 fontWeight = FontWeight.Bold,
-                color = Color(0xFF124E96)
+                color = ElderAssistColors.Primary
             )
         }
 
         Text(
             text = "Setup & Permissions Checklist",
-            fontSize = 26.sp,
-            fontWeight = FontWeight.Bold,
-            color = Color(0xFF1A1C1E),
+            style = MaterialTheme.typography.headlineLarge,
+            color = ElderAssistColors.Primary,
             modifier = Modifier.semantics { heading() }
         )
 
         Text(
             text = "ElderAssist only asks for permissions when needed. You stay in full control.",
-            fontSize = 18.sp,
-            color = Color(0xFF43474E)
+            style = MaterialTheme.typography.bodyLarge,
+            color = ElderAssistColors.OnSurfaceVariant
         )
 
         ChecklistCard(
@@ -236,12 +237,12 @@ private fun ChecklistCard(
     actionLabel: String,
     onAction: () -> Unit
 ) {
-    val borderColor = if (isEnabled) Color(0xFF136F43) else Color(0xFF9A5800)
-    val badgeColor = if (isEnabled) Color(0xFF136F43) else Color(0xFF9A5800)
+    val borderColor = if (isEnabled) ElderAssistColors.Success else ElderAssistColors.Warning
+    val badgeColor = if (isEnabled) ElderAssistColors.Success else ElderAssistColors.Warning
 
     Card(
         shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
+        colors = CardDefaults.cardColors(containerColor = ElderAssistColors.SurfaceContainerLowest),
         border = BorderStroke(2.dp, borderColor)
     ) {
         Column(
@@ -285,8 +286,8 @@ private fun ChecklistCard(
                         .fillMaxWidth()
                         .height(54.dp),
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = Color(0xFF124E96),
-                        contentColor = Color.White
+                        containerColor = ElderAssistColors.Primary,
+                        contentColor = ElderAssistColors.OnPrimary
                     )
                 ) {
                     Text(

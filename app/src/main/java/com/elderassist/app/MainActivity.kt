@@ -7,12 +7,12 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.elderassist.app.feature.home.ElderAssistRootScreen
 import com.elderassist.app.feature.home.HomeViewModel
+import com.elderassist.app.ui.theme.ElderAssistTheme
 
 class MainActivity : ComponentActivity() {
 
@@ -48,7 +48,7 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
-            MaterialTheme {
+            ElderAssistTheme {
                 ElderAssistRootScreen(
                     state = state,
                     onMicTap = viewModel::onMicButtonTapped,
