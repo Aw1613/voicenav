@@ -11,7 +11,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.elderassist.app.feature.home.ElderAssistRootScreen
+import com.elderassist.app.feature.home.GeminiElderRootScreen
 import com.elderassist.app.feature.home.HomeViewModel
 
 class MainActivity : ComponentActivity() {
@@ -49,7 +49,7 @@ class MainActivity : ComponentActivity() {
             }
 
             MaterialTheme {
-                ElderAssistRootScreen(
+                GeminiElderRootScreen(
                     state = state,
                     onMicTap = viewModel::onMicButtonTapped,
                     onStopCancel = viewModel::cancelActiveTask,

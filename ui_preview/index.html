@@ -1,0 +1,785 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VoiceNav - Gemini Elder Assistant UI Prototype</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    body {
+      background: #E8EAED;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      color: #1F2328;
+    }
+
+    /* Desktop Preview Wrapper */
+    .preview-header {
+      text-align: center;
+      margin-bottom: 20px;
+      max-width: 520px;
+    }
+
+    .preview-header h1 {
+      font-size: 24px;
+      font-weight: 800;
+      color: #1A73E8;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+    }
+
+    .preview-header p {
+      font-size: 14px;
+      color: #5F6368;
+      margin-top: 6px;
+      line-height: 1.4;
+    }
+
+    /* Simulated Phone Frame */
+    .phone-container {
+      width: 412px;
+      height: 840px;
+      background: #F9F9F7;
+      border-radius: 44px;
+      box-shadow: 0 25px 60px rgba(0, 0, 0, 0.18), 0 0 0 12px #202124;
+      position: relative;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      border: 4px solid #3c4043;
+    }
+
+    /* Phone Status Bar */
+    .status-bar {
+      height: 40px;
+      padding: 0 24px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 14px;
+      font-weight: 600;
+      color: #3C4043;
+      z-index: 10;
+    }
+
+    .status-icons {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      font-size: 13px;
+    }
+
+    /* Underlying Phone Home Screen */
+    .phone-desktop {
+      flex: 1;
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      background: linear-gradient(180deg, #E8ECEF 0%, #DFE4E8 100%);
+      position: relative;
+    }
+
+    .clock-widget {
+      text-align: center;
+      margin-top: 50px;
+    }
+
+    .clock-widget .time {
+      font-size: 64px;
+      font-weight: 300;
+      color: #202124;
+      letter-spacing: -2px;
+      line-height: 1;
+    }
+
+    .clock-widget .date {
+      font-size: 18px;
+      color: #5F6368;
+      margin-top: 8px;
+      font-weight: 500;
+    }
+
+    .hello-google-trigger-pill {
+      margin-top: 40px;
+      background: #FFFFFF;
+      border: 1.5px solid #D2E3FC;
+      border-radius: 30px;
+      padding: 14px 22px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      cursor: pointer;
+      box-shadow: 0 4px 16px rgba(26, 115, 232, 0.15);
+      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    .hello-google-trigger-pill:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(26, 115, 232, 0.25);
+    }
+
+    .hello-google-trigger-pill span {
+      font-size: 16px;
+      font-weight: 700;
+      color: #1A73E8;
+    }
+
+    /* Pop-up Dimmed Backdrop */
+    .assistant-backdrop {
+      position: absolute;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.45);
+      backdrop-filter: blur(3px);
+      z-index: 20;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.3s ease;
+    }
+
+    .assistant-backdrop.active {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    /* Gemini Pop-up Sheet (Overlay) */
+    .assistant-sheet {
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: #FFFFFF;
+      border-radius: 32px 32px 0 0;
+      padding: 18px 24px 34px;
+      box-shadow: 0 -8px 30px rgba(0, 0, 0, 0.15);
+      z-index: 30;
+      transform: translateY(105%);
+      transition: transform 0.38s cubic-bezier(0.16, 1, 0.3, 1);
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+      border-top: 1.5px solid #EAE7E0;
+    }
+
+    .assistant-sheet.active {
+      transform: translateY(0%);
+    }
+
+    /* Sheet Drag Handle */
+    .sheet-handle {
+      width: 44px;
+      height: 5px;
+      background: #D3D0C8;
+      border-radius: 4px;
+      align-self: center;
+      margin-bottom: 4px;
+    }
+
+    /* Sheet Header */
+    .sheet-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .assistant-identity {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    /* Gemini Sparkle SVG */
+    .sparkle-icon {
+      width: 34px;
+      height: 34px;
+      animation: pulse 2.4s infinite ease-in-out;
+    }
+
+    @keyframes pulse {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.08); }
+    }
+
+    .assistant-identity h2 {
+      font-size: 22px;
+      font-weight: 800;
+      color: #1E2022;
+      line-height: 1.1;
+    }
+
+    .assistant-identity p {
+      font-size: 13px;
+      color: #5F6368;
+      font-weight: 500;
+    }
+
+    .close-btn {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      border: 1px solid #E4E1DA;
+      background: #FAF9F6;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      color: #5F6368;
+      font-size: 18px;
+      transition: background 0.15s;
+    }
+
+    .close-btn:hover {
+      background: #EEEEEE;
+    }
+
+    /* Primary Speak Button (Elder-Simplified, Single-Tone) */
+    .speak-button {
+      width: 100%;
+      height: 72px;
+      background: #1A73E8;
+      border: none;
+      border-radius: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 14px;
+      color: #FFFFFF;
+      font-size: 20px;
+      font-weight: 700;
+      cursor: pointer;
+      box-shadow: 0 4px 14px rgba(26, 115, 232, 0.3);
+      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    .speak-button:hover {
+      background: #1765CC;
+      transform: translateY(-1px);
+    }
+
+    .speak-button:active {
+      transform: scale(0.98);
+    }
+
+    /* Active Listening Wave Animation */
+    .listening-wave-card {
+      display: none;
+      background: #F0F4F9;
+      border: 1.5px solid #D2E3FC;
+      border-radius: 24px;
+      padding: 18px;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .listening-wave-card.active {
+      display: flex;
+    }
+
+    .listening-title {
+      font-size: 20px;
+      font-weight: 700;
+      color: #1A73E8;
+    }
+
+    .wave-bars {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      height: 42px;
+    }
+
+    .bar {
+      width: 6px;
+      background: #1A73E8;
+      border-radius: 4px;
+      animation: wave 0.8s infinite ease-in-out;
+    }
+
+    .bar:nth-child(1) { height: 16px; animation-delay: 0.1s; }
+    .bar:nth-child(2) { height: 32px; animation-delay: 0.2s; }
+    .bar:nth-child(3) { height: 42px; animation-delay: 0.3s; }
+    .bar:nth-child(4) { height: 36px; animation-delay: 0.4s; }
+    .bar:nth-child(5) { height: 22px; animation-delay: 0.2s; }
+    .bar:nth-child(6) { height: 38px; animation-delay: 0.35s; }
+    .bar:nth-child(7) { height: 18px; animation-delay: 0.15s; }
+
+    @keyframes wave {
+      0%, 100% { transform: scaleY(0.4); }
+      50% { transform: scaleY(1); }
+    }
+
+    .done-speaking-btn {
+      width: 100%;
+      height: 46px;
+      background: #1A73E8;
+      border: none;
+      border-radius: 18px;
+      color: #FFFFFF;
+      font-size: 16px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    /* Response & Status Card */
+    .status-card {
+      background: #F8F9FA;
+      border: 1.5px solid #E8EAED;
+      border-radius: 20px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      transition: all 0.3s ease;
+    }
+
+    .status-card.success {
+      background: #F1F8F4;
+      border-color: #CEEAD6;
+    }
+
+    .status-headline {
+      font-size: 17px;
+      font-weight: 700;
+      color: #1E2022;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .status-detail {
+      font-size: 14px;
+      color: #5F6368;
+      line-height: 1.4;
+    }
+
+    /* Live Transcript Card */
+    .transcript-box {
+      display: none;
+      background: #F0F4F9;
+      border: 1px solid #D2E3FC;
+      border-radius: 16px;
+      padding: 14px;
+    }
+
+    .transcript-box.active {
+      display: block;
+    }
+
+    .transcript-label {
+      font-size: 13px;
+      font-weight: 600;
+      color: #5F6368;
+      margin-bottom: 4px;
+    }
+
+    .transcript-text {
+      font-size: 18px;
+      font-weight: 700;
+      color: #1E2022;
+    }
+
+    /* Suggestion Chips (Gemini Style) */
+    .suggestion-section {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .suggestion-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: #1E2022;
+    }
+
+    .chips-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    .chip-btn {
+      height: 52px;
+      background: #FAF9F6;
+      border: 1.2px solid #E0DDD5;
+      border-radius: 16px;
+      display: flex;
+      align-items: center;
+      padding: 0 14px;
+      gap: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      color: #1E2022;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+
+    .chip-btn:hover {
+      background: #F1F3F4;
+      border-color: #1A73E8;
+    }
+
+    .chip-btn svg {
+      color: #1A73E8;
+      flex-shrink: 0;
+    }
+
+    /* Manual Command Row */
+    .manual-row {
+      display: flex;
+      gap: 8px;
+      margin-top: 2px;
+    }
+
+    .manual-input {
+      flex: 1;
+      height: 48px;
+      background: #FAF9F6;
+      border: 1.2px solid #E0DDD5;
+      border-radius: 24px;
+      padding: 0 16px;
+      font-size: 14px;
+      outline: none;
+      color: #1E2022;
+    }
+
+    .manual-input:focus {
+      border-color: #1A73E8;
+      background: #FFFFFF;
+    }
+
+    .send-btn {
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      background: #1A73E8;
+      border: none;
+      color: white;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+    }
+
+    /* Confirmation Banner (When an action requires confirmation) */
+    .confirmation-card {
+      display: none;
+      background: #FFFFFF;
+      border: 2px solid #1A73E8;
+      border-radius: 20px;
+      padding: 16px;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .confirmation-card.active {
+      display: flex;
+    }
+
+    .confirmation-actions {
+      display: flex;
+      gap: 10px;
+    }
+
+    .confirm-btn {
+      flex: 1;
+      height: 48px;
+      background: #1A73E8;
+      color: white;
+      border: none;
+      border-radius: 14px;
+      font-size: 16px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .cancel-btn {
+      flex: 1;
+      height: 48px;
+      background: #FAF9F6;
+      border: 1.5px solid #E0DDD5;
+      color: #5F6368;
+      border-radius: 14px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="preview-header">
+    <h1>
+      <svg class="sparkle-icon" viewBox="0 0 24 24" fill="none">
+        <path d="M12 2C12.5 7.5 16.5 11.5 22 12C16.5 12.5 12.5 16.5 12 22C11.5 16.5 7.5 12.5 2 12C7.5 11.5 11.5 7.5 12 2Z" fill="#1A73E8"/>
+      </svg>
+      VoiceNav - Gemini Elder UI
+    </h1>
+    <p>Simulating the <strong>"Hello Google" pop-up overlay</strong> that slides up over any active phone screen, built with elder-friendly single-tone calm blue and large readable elements.</p>
+  </div>
+
+  <!-- Mobile Screen Frame -->
+  <div class="phone-container">
+    
+    <!-- Status Bar -->
+    <div class="status-bar">
+      <span>10:30</span>
+      <div class="status-icons">
+        <span>5G</span>
+        <span>98%</span>
+      </div>
+    </div>
+
+    <!-- Underlying Phone Desktop -->
+    <div class="phone-desktop">
+      <div class="clock-widget">
+        <div class="time">10:30</div>
+        <div class="date">Thursday, November 27</div>
+      </div>
+
+      <!-- Trigger Assistant Simulation -->
+      <div class="hello-google-trigger-pill" id="triggerOverlayBtn">
+        <svg class="sparkle-icon" viewBox="0 0 24 24" fill="none" style="width: 26px; height: 26px;">
+          <path d="M12 2C12.5 7.5 16.5 11.5 22 12C16.5 12.5 12.5 16.5 12 22C11.5 16.5 7.5 12.5 2 12C7.5 11.5 11.5 7.5 12 2Z" fill="#1A73E8"/>
+        </svg>
+        <span>Say "Hello Google" or Tap</span>
+      </div>
+    </div>
+
+    <!-- Dimmed Backdrop -->
+    <div class="assistant-backdrop" id="backdrop"></div>
+
+    <!-- Gemini-Style Pop-up Bottom Sheet -->
+    <div class="assistant-sheet" id="assistantSheet">
+      <div class="sheet-handle"></div>
+
+      <!-- Header -->
+      <div class="sheet-header">
+        <div class="assistant-identity">
+          <svg class="sparkle-icon" viewBox="0 0 24 24" fill="none">
+            <path d="M12 2C12.5 7.5 16.5 11.5 22 12C16.5 12.5 12.5 16.5 12 22C11.5 16.5 7.5 12.5 2 12C7.5 11.5 11.5 7.5 12 2Z" fill="#1A73E8"/>
+          </svg>
+          <div>
+            <h2>Assistant</h2>
+            <p>How can I help you today?</p>
+          </div>
+        </div>
+        <button class="close-btn" id="closeSheetBtn" title="Dismiss overlay">&times;</button>
+      </div>
+
+      <!-- Main Speak Button -->
+      <button class="speak-button" id="speakBtn">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/>
+          <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/>
+        </svg>
+        Tap to Speak
+      </button>
+
+      <!-- Active Listening Visualizer -->
+      <div class="listening-wave-card" id="listeningWaveCard">
+        <div class="listening-title">Listening to you...</div>
+        <div class="wave-bars">
+          <div class="bar"></div>
+          <div class="bar"></div>
+          <div class="bar"></div>
+          <div class="bar"></div>
+          <div class="bar"></div>
+          <div class="bar"></div>
+          <div class="bar"></div>
+        </div>
+        <button class="done-speaking-btn" id="doneSpeakingBtn">Tap when done speaking</button>
+      </div>
+
+      <!-- Transcript Box -->
+      <div class="transcript-box" id="transcriptBox">
+        <div class="transcript-label">You said:</div>
+        <div class="transcript-text" id="transcriptText">"Turn on Wi-Fi"</div>
+      </div>
+
+      <!-- Confirmation Card (for safety) -->
+      <div class="confirmation-card" id="confirmationCard">
+        <div style="font-weight: 700; font-size: 16px; color: #1E2022;">Confirmation Required</div>
+        <div style="font-size: 14px; color: #5F6368;" id="confirmationMsg">Would you like to open Wi-Fi settings now?</div>
+        <div class="confirmation-actions">
+          <button class="confirm-btn" id="confirmActionBtn">Yes, Open</button>
+          <button class="cancel-btn" id="cancelActionBtn">Cancel</button>
+        </div>
+      </div>
+
+      <!-- Status Feedback -->
+      <div class="status-card" id="statusCard">
+        <div class="status-headline" id="statusHeadline">
+          Ready for your command
+        </div>
+        <div class="status-detail" id="statusDetail">
+          Speak clearly or choose one of the quick options below.
+        </div>
+      </div>
+
+      <!-- Quick 1-Tap Suggestion Chips -->
+      <div class="suggestion-section">
+        <div class="suggestion-title">Or tap a quick command:</div>
+        <div class="chips-grid">
+          <button class="chip-btn" onclick="executeQuickCommand('Turn on Wi-Fi', 'Opening Wi-Fi settings for you...')">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M12 4C7.31 4 3.07 5.9 0 8.98L12 21 24 8.98C20.93 5.9 16.69 4 12 4z"/>
+            </svg>
+            Wi-Fi Settings
+          </button>
+          <button class="chip-btn" onclick="executeQuickCommand('Adjust Sound', 'Opening Sound & Volume settings...')">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/>
+            </svg>
+            Sound / Volume
+          </button>
+          <button class="chip-btn" onclick="executeQuickCommand('Call Daughter', 'Finding contact for Daughter...')">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/>
+            </svg>
+            Call Contact
+          </button>
+          <button class="chip-btn" onclick="executeQuickCommand('Open Bluetooth', 'Opening Bluetooth settings...')">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M19.41 7.41L13 1 12 1v7.59L7.41 4 6 5.41 11.59 11 6 16.59 7.41 18 12 13.41V23l1 1 6.41-6.41L14.83 13l4.58-4.59zM14 5.83l1.88 1.88L14 9.59V5.83zm1.88 10.46L14 18.17v-3.76l1.88 1.88z"/>
+            </svg>
+            Bluetooth
+          </button>
+        </div>
+      </div>
+
+      <!-- Manual fallback row -->
+      <div class="manual-row">
+        <input type="text" class="manual-input" id="manualInput" placeholder="Or type a command here...">
+        <button class="send-btn" id="sendBtn" title="Send command">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
+          </svg>
+        </button>
+      </div>
+
+    </div>
+  </div>
+
+  <script>
+    const triggerOverlayBtn = document.getElementById('triggerOverlayBtn');
+    const assistantSheet = document.getElementById('assistantSheet');
+    const backdrop = document.getElementById('backdrop');
+    const closeSheetBtn = document.getElementById('closeSheetBtn');
+
+    const speakBtn = document.getElementById('speakBtn');
+    const listeningWaveCard = document.getElementById('listeningWaveCard');
+    const doneSpeakingBtn = document.getElementById('doneSpeakingBtn');
+    const transcriptBox = document.getElementById('transcriptBox');
+    const transcriptText = document.getElementById('transcriptText');
+    const statusCard = document.getElementById('statusCard');
+    const statusHeadline = document.getElementById('statusHeadline');
+    const statusDetail = document.getElementById('statusDetail');
+    const confirmationCard = document.getElementById('confirmationCard');
+    const confirmationMsg = document.getElementById('confirmationMsg');
+    const confirmActionBtn = document.getElementById('confirmActionBtn');
+    const cancelActionBtn = document.getElementById('cancelActionBtn');
+    const manualInput = document.getElementById('manualInput');
+    const sendBtn = document.getElementById('sendBtn');
+
+    function openAssistant() {
+      assistantSheet.classList.add('active');
+      backdrop.classList.add('active');
+    }
+
+    function closeAssistant() {
+      assistantSheet.classList.remove('active');
+      backdrop.classList.remove('active');
+      resetState();
+    }
+
+    function resetState() {
+      speakBtn.style.display = 'flex';
+      listeningWaveCard.classList.remove('active');
+      transcriptBox.classList.remove('active');
+      confirmationCard.classList.remove('active');
+      statusCard.classList.remove('success');
+      statusHeadline.innerHTML = 'Ready for your command';
+      statusDetail.innerHTML = 'Speak clearly or choose one of the quick options below.';
+    }
+
+    triggerOverlayBtn.addEventListener('click', openAssistant);
+    backdrop.addEventListener('click', closeAssistant);
+    closeSheetBtn.addEventListener('click', closeAssistant);
+
+    // Speak Button click -> Start listening simulation
+    speakBtn.addEventListener('click', () => {
+      speakBtn.style.display = 'none';
+      listeningWaveCard.classList.add('active');
+      statusHeadline.innerHTML = 'Listening to your voice...';
+      statusDetail.innerHTML = 'Say what you want in plain words.';
+    });
+
+    // Done speaking -> show transcript & ask confirmation
+    doneSpeakingBtn.addEventListener('click', () => {
+      listeningWaveCard.classList.remove('active');
+      speakBtn.style.display = 'flex';
+      transcriptBox.classList.add('active');
+      transcriptText.innerHTML = '"Open Bluetooth settings"';
+      
+      confirmationCard.classList.add('active');
+      confirmationMsg.innerHTML = 'Understood! Should I open Bluetooth settings for you?';
+
+      statusHeadline.innerHTML = 'Action waiting for your tap';
+      statusDetail.innerHTML = 'Tap "Yes, Open" to confirm, or "Cancel" to do nothing.';
+    });
+
+    confirmActionBtn.addEventListener('click', () => {
+      confirmationCard.classList.remove('active');
+      statusCard.classList.add('success');
+      statusHeadline.innerHTML = '&#10003; Bluetooth Settings Opened';
+      statusDetail.innerHTML = 'Completed successfully. Nothing unexpected was changed.';
+    });
+
+    cancelActionBtn.addEventListener('click', () => {
+      confirmationCard.classList.remove('active');
+      statusHeadline.innerHTML = 'Action cancelled';
+      statusDetail.innerHTML = 'Nothing was opened or changed.';
+    });
+
+    function executeQuickCommand(command, feedback) {
+      transcriptBox.classList.add('active');
+      transcriptText.innerHTML = `"${command}"`;
+      statusCard.classList.add('success');
+      statusHeadline.innerHTML = `&#10003; ${feedback}`;
+      statusDetail.innerHTML = 'Task completed automatically without any complicated steps.';
+    }
+
+    sendBtn.addEventListener('click', () => {
+      const val = manualInput.value.trim();
+      if (val) {
+        executeQuickCommand(val, `Executing "${val}"...`);
+        manualInput.value = '';
+      }
+    });
+
+    manualInput.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') sendBtn.click();
+    });
+
+    // Auto-open assistant overlay on preview load
+    setTimeout(openAssistant, 450);
+  </script>
+</body>
+</html>
