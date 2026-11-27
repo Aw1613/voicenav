@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">ElderAssist</string>
+    <string name="accessibility_service_label">ElderAssist Navigation Helper</string>
+    <string name="accessibility_service_description">Helps you navigate phone menus, return Home or Back, and tap visible settings options when you ask ElderAssist for help. ElderAssist only reads the screen during an active request you started and ignores passwords or payment fields.</string>
+</resources>
