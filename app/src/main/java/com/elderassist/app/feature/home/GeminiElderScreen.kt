@@ -464,7 +464,7 @@ private fun GeminiAssistantSheet(
                     GeminiSuggestionChip(
                         icon = Icons.Default.Settings,
                         label = "All Settings",
-                        onClick = { onQuickSettingTap(SettingDestination.SETTINGS_ROOT) },
+                        onClick = { onQuickSettingTap(SettingDestination.GENERAL_SETTINGS) },
                         modifier = Modifier.weight(1f)
                     )
                 }
