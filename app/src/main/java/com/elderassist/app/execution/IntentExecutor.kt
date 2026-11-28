@@ -141,69 +141,155 @@ class IntentExecutor(private val context: Context) {
 
     fun openAppByName(appName: String): IntentLaunchOutcome {
         val cleanName = appName.trim().lowercase()
+        val normalized = cleanName
+            .replace("what's app", "whatsapp")
+            .replace("whats app", "whatsapp")
+            .replace("what app", "whatsapp")
+            .replace("you tube", "youtube")
+            .replace("u tube", "youtube")
+            .replace("playstore", "play store")
+            .replace("call logs", "call log")
+            .replace("call history", "call log")
+            .trim()
 
-        // 1. Direct package / Category shortcuts
-        val intentToTry = when {
-            cleanName == "whatsapp" || cleanName.contains("whatsapp") -> {
-                context.packageManager.getLaunchIntentForPackage("com.whatsapp")
-                    ?: context.packageManager.getLaunchIntentForPackage("com.whatsapp.w4b")
+        // 1. WhatsApp
+        if (normalized.contains("whatsapp")) {
+            val waLaunch = context.packageManager.getLaunchIntentForPackage("com.whatsapp")
+                ?: context.packageManager.getLaunchIntentForPackage("com.whatsapp.w4b")
+            if (waLaunch != null) {
+                val res = launchIntent(waLaunch, "Could not open WhatsApp.")
+                if (res.launched) return res
             }
-            cleanName.contains("message") || cleanName.contains("sms") || cleanName.contains("text") -> {
-                Intent.makeMainSelectorActivity(Intent.ACTION_MAIN, Intent.CATEGORY_APP_MESSAGING)
-                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            }
-            cleanName.contains("call log") || cleanName.contains("call history") || cleanName.contains("dialer") || cleanName == "phone" -> {
-                Intent(Intent.ACTION_VIEW, android.provider.CallLog.Calls.CONTENT_URI)
-                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            }
-            cleanName == "camera" || cleanName.contains("camera") -> {
-                Intent("android.media.action.STILL_IMAGE_CAMERA")
-                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            }
-            cleanName == "gallery" || cleanName.contains("photo") -> {
-                Intent.makeMainSelectorActivity(Intent.ACTION_MAIN, Intent.CATEGORY_APP_GALLERY)
-                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            }
-            cleanName.contains("browser") || cleanName == "chrome" || cleanName.contains("internet") -> {
-                Intent.makeMainSelectorActivity(Intent.ACTION_MAIN, Intent.CATEGORY_APP_BROWSER)
-                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            }
-            cleanName.contains("youtube") -> {
-                context.packageManager.getLaunchIntentForPackage("com.google.android.youtube")
-            }
-            cleanName.contains("contact") -> {
-                return openContactsApp()
-            }
-            cleanName.contains("setting") -> {
-                return openSetting(SettingDestination.GENERAL_SETTINGS)
-            }
-            else -> null
+            // Direct action fallback
+            val waIntent = Intent(Intent.ACTION_VIEW, android.net.Uri.parse("whatsapp://send"))
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            val res2 = launchIntent(waIntent, "Could not open WhatsApp.")
+            if (res2.launched) return res2
         }
 
-        if (intentToTry != null) {
-            val outcome = launchIntent(intentToTry, "Could not open $appName.")
-            if (outcome.launched) return outcome
+        // 2. YouTube
+        if (normalized.contains("youtube")) {
+            val ytLaunch = context.packageManager.getLaunchIntentForPackage("com.google.android.youtube")
+            if (ytLaunch != null) {
+                val res = launchIntent(ytLaunch, "Could not open YouTube.")
+                if (res.launched) return res
+            }
+            val ytIntent = Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://www.youtube.com"))
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            val res2 = launchIntent(ytIntent, "Could not open YouTube.")
+            if (res2.launched) return res2
         }
 
-        // 2. Search installed applications by display label
+        // 3. Call Log / Dialer / Phone
+        if (normalized.contains("call log") || normalized == "call history" || normalized == "dialer" || normalized == "phone") {
+            val callLogIntent = Intent(Intent.ACTION_VIEW, android.provider.CallLog.Calls.CONTENT_URI)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            val res = launchIntent(callLogIntent, "Could not open Call Log.")
+            if (res.launched) return res
+
+            val dialerIntent = Intent(Intent.ACTION_DIAL).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            val res2 = launchIntent(dialerIntent, "Could not open Phone.")
+            if (res2.launched) return res2
+        }
+
+        // 4. Messages / SMS
+        if (normalized.contains("message") || normalized.contains("sms") || normalized.contains("text")) {
+            val msgSelector = Intent.makeMainSelectorActivity(Intent.ACTION_MAIN, Intent.CATEGORY_APP_MESSAGING)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            val res = launchIntent(msgSelector, "Could not open Messages.")
+            if (res.launched) return res
+
+            val msgPkg = context.packageManager.getLaunchIntentForPackage("com.google.android.apps.messaging")
+                ?: context.packageManager.getLaunchIntentForPackage("com.samsung.android.messaging")
+            if (msgPkg != null) {
+                val res2 = launchIntent(msgPkg, "Could not open Messages.")
+                if (res2.launched) return res2
+            }
+
+            val smsIntent = Intent(Intent.ACTION_VIEW, android.net.Uri.parse("sms:"))
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            val res3 = launchIntent(smsIntent, "Could not open Messages.")
+            if (res3.launched) return res3
+        }
+
+        // 5. Camera
+        if (normalized.contains("camera")) {
+            val camIntent = Intent("android.media.action.STILL_IMAGE_CAMERA")
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            val res = launchIntent(camIntent, "Could not open Camera.")
+            if (res.launched) return res
+
+            val camCapture = Intent(android.provider.MediaStore.ACTION_IMAGE_CAPTURE)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            val res2 = launchIntent(camCapture, "Could not open Camera.")
+            if (res2.launched) return res2
+        }
+
+        // 6. Gallery / Photos
+        if (normalized.contains("gallery") || normalized.contains("photo")) {
+            val galSelector = Intent.makeMainSelectorActivity(Intent.ACTION_MAIN, Intent.CATEGORY_APP_GALLERY)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            val res = launchIntent(galSelector, "Could not open Photos.")
+            if (res.launched) return res
+
+            val photosLaunch = context.packageManager.getLaunchIntentForPackage("com.google.android.apps.photos")
+            if (photosLaunch != null) {
+                val res2 = launchIntent(photosLaunch, "Could not open Photos.")
+                if (res2.launched) return res2
+            }
+        }
+
+        // 7. Chrome / Browser
+        if (normalized.contains("browser") || normalized.contains("chrome") || normalized.contains("internet")) {
+            val browserSelector = Intent.makeMainSelectorActivity(Intent.ACTION_MAIN, Intent.CATEGORY_APP_BROWSER)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            val res = launchIntent(browserSelector, "Could not open Browser.")
+            if (res.launched) return res
+
+            val chromeLaunch = context.packageManager.getLaunchIntentForPackage("com.android.chrome")
+            if (chromeLaunch != null) {
+                val res2 = launchIntent(chromeLaunch, "Could not open Chrome.")
+                if (res2.launched) return res2
+            }
+        }
+
+        // 8. Play Store
+        if (normalized.contains("play store") || normalized == "store") {
+            val storeLaunch = context.packageManager.getLaunchIntentForPackage("com.android.vending")
+            if (storeLaunch != null) {
+                val res = launchIntent(storeLaunch, "Could not open Google Play Store.")
+                if (res.launched) return res
+            }
+        }
+
+        // 9. Contacts & Settings
+        if (normalized.contains("contact") || normalized == "phonebook") {
+            return openContactsApp()
+        }
+        if (normalized.contains("setting")) {
+            return openSetting(SettingDestination.GENERAL_SETTINGS)
+        }
+
+        // 10. Search all installed applications by display label or package
         try {
             val pm = context.packageManager
             val launcherIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
             val activities = pm.queryIntentActivities(launcherIntent, 0)
 
             val exactMatch = activities.firstOrNull {
-                it.loadLabel(pm).toString().trim().equals(cleanName, ignoreCase = true)
+                it.loadLabel(pm).toString().trim().equals(normalized, ignoreCase = true)
             }
-            val targetActivity = exactMatch ?: activities.firstOrNull {
-                it.loadLabel(pm).toString().trim().lowercase().contains(cleanName) ||
-                    it.activityInfo.packageName.lowercase().contains(cleanName)
+            val partialMatch = exactMatch ?: activities.firstOrNull {
+                val label = it.loadLabel(pm).toString().trim().lowercase()
+                label.contains(normalized) || normalized.contains(label) ||
+                    it.activityInfo.packageName.lowercase().contains(normalized)
             }
 
-            if (targetActivity != null) {
-                val launchIntent = pm.getLaunchIntentForPackage(targetActivity.activityInfo.packageName)
+            if (partialMatch != null) {
+                val launchIntent = pm.getLaunchIntentForPackage(partialMatch.activityInfo.packageName)
                 if (launchIntent != null) {
                     launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    return launchIntent(launchIntent, "Could not launch ${targetActivity.loadLabel(pm)}.")
+                    return launchIntent(launchIntent, "Could not launch ${partialMatch.loadLabel(pm)}.")
                 }
             }
         } catch (_: Exception) {}

@@ -422,9 +422,44 @@ class CommandParser {
     }
 
     private fun parseAppCommand(text: String): ParseOutcome.Matched? {
+        val normalized = text
+            .replace("what's app", "whatsapp")
+            .replace("whats app", "whatsapp")
+            .replace("what app", "whatsapp")
+            .replace("you tube", "youtube")
+            .replace("u tube", "youtube")
+            .replace("call logs", "call log")
+            .replace("call history", "call log")
+            .trim()
+
+        // 1. Direct standalone app mentions: "whatsapp", "youtube", "camera", etc.
+        val directApps = mapOf(
+            "whatsapp" to "WhatsApp",
+            "youtube" to "YouTube",
+            "messages" to "Messages",
+            "message" to "Messages",
+            "sms" to "Messages",
+            "call log" to "Call Log",
+            "camera" to "Camera",
+            "gallery" to "Photos",
+            "photos" to "Photos",
+            "chrome" to "Chrome",
+            "browser" to "Browser",
+            "play store" to "Play Store",
+            "calculator" to "Calculator"
+        )
+        if (directApps.containsKey(normalized)) {
+            val displayName = directApps[normalized]!!
+            return ParseOutcome.Matched(
+                action = AssistantAction.OpenNamedApp(normalized),
+                summaryForUser = "Opening $displayName."
+            )
+        }
+
+        // 2. Phrased app requests: "open whatsapp", "can you launch youtube please", "open the camera"
         val openAppMatch = Regex(
-            """^(?:please |can you |could you )?(?:open|launch|start|show|go to) ([a-zA-Z0-9\s]{2,30})$"""
-        ).find(text)
+            """^(?:please |can you |could you |kindly |help me )?(?:open|launch|start|show|go to)(?: the| my)? ([a-zA-Z0-9\s]{2,30}?)(?: for me| please)?$"""
+        ).find(normalized)
         if (openAppMatch != null) {
             val appCandidate = openAppMatch.groupValues[1].trim()
             if (!isSettingKeyword(appCandidate) &&
@@ -439,9 +474,10 @@ class CommandParser {
                         summaryForUser = "Opening Contacts."
                     )
                 }
+                val prettyName = directApps[appCandidate] ?: appCandidate.toTitleCase()
                 return ParseOutcome.Matched(
                     action = AssistantAction.OpenNamedApp(appCandidate),
-                    summaryForUser = "Opening $appCandidate."
+                    summaryForUser = "Opening $prettyName."
                 )
             }
         }

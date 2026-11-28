@@ -188,12 +188,18 @@ class GeminiIntentInterpreter(
             }
 
             "OPEN_APP" -> {
-                val targetApp = dto.appName?.trim()?.takeIf { it.isNotBlank() }
+                val rawTarget = dto.appName?.trim()?.takeIf { it.isNotBlank() }
                     ?: dto.contactQuery?.trim()?.takeIf { it.isNotBlank() }
-                if (targetApp != null) {
-                    if (targetApp.equals("contacts", ignoreCase = true)) {
+                if (rawTarget != null) {
+                    val targetApp = rawTarget.lowercase()
+                        .replace("what's app", "whatsapp")
+                        .replace("whats app", "whatsapp")
+                        .replace("you tube", "youtube")
+                        .replace("call logs", "call log")
+                        .trim()
+                    if (targetApp == "contacts" || targetApp == "phonebook") {
                         AssistantAction.OpenApp(SupportedApp.CONTACTS)
-                    } else if (targetApp.equals("settings", ignoreCase = true)) {
+                    } else if (targetApp == "settings") {
                         AssistantAction.OpenSetting(SettingDestination.GENERAL_SETTINGS)
                     } else {
                         AssistantAction.OpenNamedApp(targetApp)
