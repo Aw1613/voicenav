@@ -157,7 +157,7 @@ class IntentExecutor(private val context: Context) {
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
             cleanName == "camera" || cleanName.contains("camera") -> {
-                Intent.makeMainSelectorActivity(Intent.ACTION_MAIN, Intent.CATEGORY_APP_CAMERA)
+                Intent("android.media.action.STILL_IMAGE_CAMERA")
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
             cleanName == "gallery" || cleanName.contains("photo") -> {
