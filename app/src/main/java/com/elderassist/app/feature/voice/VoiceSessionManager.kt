@@ -25,9 +25,32 @@ class VoiceSessionManager(
         speaker.stop()
     }
 
-    fun speakFeedback(message: String, ttsEnabled: Boolean) {
+    fun speakFeedback(
+        message: String,
+        ttsEnabled: Boolean,
+        speechRate: Float = 0.95f,
+        languageTag: String = "en-IN"
+    ) {
         if (ttsEnabled && message.isNotBlank()) {
-            speaker.speak(message)
+            speaker.speak(
+                message = message,
+                speechRate = speechRate,
+                languageTag = languageTag
+            )
+        }
+    }
+
+    fun speakExample(
+        message: String,
+        speechRate: Float = 0.95f,
+        languageTag: String = "en-IN"
+    ) {
+        if (message.isNotBlank()) {
+            speaker.speak(
+                message = message,
+                speechRate = speechRate,
+                languageTag = languageTag
+            )
         }
     }
 
