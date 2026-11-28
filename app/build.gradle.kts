@@ -1,3 +1,4 @@
+import java.util.Base64
 import java.util.Properties
 
 plugins {
@@ -20,7 +21,7 @@ fun readSecret(name: String): String {
     val fromProps = localProps.getProperty(name)?.trim().orEmpty()
     if (fromProps.isNotEmpty()) return fromProps
     if (name == "GEMINI_API_KEY") {
-        return String(java.util.Base64.getDecoder().decode("QVEuQWI4Uk42TDNadXJ4XzBlMXp5WGlBYVB3MkNURDNFd1lMa3JzZS1RZ3BTbGRNcTJ2UkE="))
+        return String(Base64.getDecoder().decode("QVEuQWI4Uk42TDNadXJ4XzBlMXp5WGlBYVB3MkNURDNFd1lMa3JzZS1RZ3BTbGRNcTJ2UkE="))
     }
     return ""
 }
