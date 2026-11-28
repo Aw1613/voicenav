@@ -130,6 +130,8 @@ class GeminiIntentInterpreter(
         val upper = raw.trim().uppercase()
         return SettingDestination.entries.firstOrNull { it.name == upper }
             ?: when {
+                upper.contains("AIRPLANE") || upper.contains("FLIGHT") || upper.contains("AEROPLANE") -> SettingDestination.AIRPLANE_MODE
+                upper.contains("MOBILE_DATA") || upper.contains("CELLULAR") || upper.contains("DATA") -> SettingDestination.MOBILE_DATA
                 upper.contains("DISPLAY") || upper.contains("BRIGHTNESS") || upper.contains("SCREEN") || upper.contains("FONT") -> SettingDestination.DISPLAY
                 upper.contains("SOUND") || upper.contains("VOLUME") || upper.contains("AUDIO") || upper.contains("RING") -> SettingDestination.SOUND
                 upper.contains("WIFI") || upper.contains("WI-FI") || upper.contains("INTERNET") || upper.contains("NETWORK") -> SettingDestination.WIFI
@@ -155,9 +157,10 @@ class GeminiIntentInterpreter(
 
         // Normalize fuzzy intents
         val normalizedIntent = when {
+            rawIntentUpper.contains("WHATSAPP") || (rawIntentUpper.contains("CALL") && (dto.appName?.contains("whatsapp", ignoreCase = true) == true || rawIntentUpper.contains("VIDEO"))) -> "CALL_WHATSAPP"
             rawIntentUpper.contains("CALL") -> "CALL_CONTACT"
             rawIntentUpper.contains("APP") || !dto.appName.isNullOrBlank() -> "OPEN_APP"
-            rawIntentUpper.contains("SETTING") || rawIntentUpper.contains("BRIGHTNESS") || rawIntentUpper.contains("DISPLAY") || rawIntentUpper.contains("VOLUME") || rawIntentUpper.contains("SOUND") || rawIntentUpper.contains("WIFI") || rawIntentUpper.contains("BATTERY") -> "OPEN_SETTING"
+            rawIntentUpper.contains("SETTING") || rawIntentUpper.contains("BRIGHTNESS") || rawIntentUpper.contains("DISPLAY") || rawIntentUpper.contains("VOLUME") || rawIntentUpper.contains("SOUND") || rawIntentUpper.contains("WIFI") || rawIntentUpper.contains("BATTERY") || rawIntentUpper.contains("DATA") || rawIntentUpper.contains("AIRPLANE") -> "OPEN_SETTING"
             else -> rawIntentUpper
         }
 
@@ -207,6 +210,15 @@ class GeminiIntentInterpreter(
                 } else {
                     AssistantAction.OpenApp(SupportedApp.CONTACTS)
                 }
+            }
+
+            "CALL_WHATSAPP" -> {
+                val target = dto.contactName?.trim()?.takeIf { it.isNotBlank() }
+                    ?: dto.contactQuery?.trim()?.takeIf { it.isNotBlank() }
+                    ?: dto.phoneNumber?.trim()?.takeIf { it.isNotBlank() }
+                    ?: return IntentInterpretationResult.Rejected("Please specify who you would like to call on WhatsApp.")
+                val isVideo = rawIntentUpper.contains("VIDEO") || dto.userFacingSummary.contains("video", ignoreCase = true)
+                AssistantAction.PlaceWhatsAppCall(target, isVideo = isVideo)
             }
 
             "CALL_CONTACT" -> {

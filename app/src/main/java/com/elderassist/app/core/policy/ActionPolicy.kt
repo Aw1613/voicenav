@@ -50,6 +50,7 @@ object ActionPolicy {
         is AssistantAction.OpenApp,
         is AssistantAction.OpenNamedApp,
         is AssistantAction.PlaceCall,
+        is AssistantAction.PlaceWhatsAppCall,
         AssistantAction.GoHome,
         AssistantAction.GoBack,
         AssistantAction.OpenRecents,

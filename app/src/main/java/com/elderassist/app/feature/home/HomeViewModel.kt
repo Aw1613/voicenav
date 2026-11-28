@@ -50,7 +50,8 @@ data class PendingConfirmation(
 data class PendingContactChoice(
     val query: String,
     val pendingNewName: String?,
-    val candidates: List<ContactCandidate>
+    val candidates: List<ContactCandidate>,
+    val pendingAction: AssistantAction? = null
 )
 
 data class PendingClarification(
@@ -356,6 +357,23 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                 action = renameAction,
                 source = ActionSource.DETERMINISTIC,
                 summary = "Preparing to rename ${candidate.displayName}."
+            )
+        } else if (choice.pendingAction is AssistantAction.PlaceCall) {
+            val phone = candidate.rawPhoneNumber ?: candidate.phoneHint ?: candidate.displayName
+            val callAction = AssistantAction.PlaceCall(phone)
+            executeDirectAction(
+                action = callAction,
+                source = ActionSource.DETERMINISTIC,
+                summary = "Calling ${candidate.displayName}."
+            )
+        } else if (choice.pendingAction is AssistantAction.PlaceWhatsAppCall) {
+            val isVideo = (choice.pendingAction as AssistantAction.PlaceWhatsAppCall).isVideo
+            val phone = candidate.rawPhoneNumber ?: candidate.phoneHint ?: candidate.displayName
+            val waAction = AssistantAction.PlaceWhatsAppCall(phone, isVideo = isVideo)
+            executeDirectAction(
+                action = waAction,
+                source = ActionSource.DETERMINISTIC,
+                summary = "Starting WhatsApp call with ${candidate.displayName}."
             )
         } else {
             val phoneDetail = candidate.phoneHint?.let { " (phone $it)" }.orEmpty()
@@ -839,7 +857,8 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                         pendingContactChoice = PendingContactChoice(
                             query = result.query,
                             pendingNewName = result.pendingNewName,
-                            candidates = result.candidates
+                            candidates = result.candidates,
+                            pendingAction = result.pendingAction
                         )
                     )
                 }

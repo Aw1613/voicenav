@@ -47,7 +47,8 @@ sealed interface ActionExecutionResult {
     data class NeedsContactSelection(
         val query: String,
         val pendingNewName: String? = null,
-        val candidates: List<ContactCandidate>
+        val candidates: List<ContactCandidate>,
+        val pendingAction: AssistantAction? = null
     ) : ActionExecutionResult
 
     data class NeedsConfirmation(
@@ -71,7 +72,8 @@ data class ContactCandidate(
     val contactId: Long,
     val lookupKey: String,
     val displayName: String,
-    val phoneHint: String? = null
+    val phoneHint: String? = null,
+    val rawPhoneNumber: String? = null
 )
 
 data class VerificationResult(

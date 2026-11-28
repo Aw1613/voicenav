@@ -102,6 +102,8 @@ class ActivityHistoryRepository(
                 SettingDestination.WIFI -> ActionId.OPEN_WIFI.code to "Opened Wi-Fi settings"
                 SettingDestination.BLUETOOTH -> ActionId.OPEN_BLUETOOTH.code to "Opened Bluetooth settings"
                 SettingDestination.HOTSPOT -> ActionId.OPEN_HOTSPOT.code to "Opened Hotspot settings"
+                SettingDestination.MOBILE_DATA -> "ACT-DATA" to "Opened Mobile Data settings"
+                SettingDestination.AIRPLANE_MODE -> "ACT-AIRPLANE" to "Opened Airplane Mode settings"
                 SettingDestination.DISPLAY -> ActionId.OPEN_DISPLAY.code to "Opened Display settings"
                 SettingDestination.SOUND -> ActionId.OPEN_SOUND.code to "Opened Sound settings"
                 SettingDestination.ACCESSIBILITY -> ActionId.OPEN_ACCESSIBILITY.code to "Opened Accessibility settings"
@@ -117,6 +119,7 @@ class ActivityHistoryRepository(
             is AssistantAction.OpenNamedApp -> "ACT-APP" to "Opened ${action.appName}"
 
             is AssistantAction.PlaceCall -> "ACT-CALL" to "Called ${action.recipient}"
+            is AssistantAction.PlaceWhatsAppCall -> "ACT-WACALL" to "WhatsApp called ${action.recipient}"
 
             AssistantAction.GoHome -> ActionId.GO_HOME.code to "Returned to Home screen"
             AssistantAction.GoBack -> ActionId.GO_BACK.code to "Navigated Back"

@@ -52,12 +52,14 @@ class ContactsRepository(private val context: Context) {
                 val displayName = if (nameIdx >= 0) cursor.getString(nameIdx).orEmpty() else ""
                 val hasPhone = if (hasPhoneIdx >= 0) cursor.getInt(hasPhoneIdx) > 0 else false
                 if (displayName.isNotBlank() && lookupKey.isNotBlank()) {
-                    val hint = if (hasPhone) fetchMaskedPhoneHint(id) else null
+                    val rawPhone = if (hasPhone) fetchRawPhoneNumber(id) else null
+                    val hint = rawPhone?.let { ActionPolicy.maskPhoneLast4(it) }
                     results += ContactCandidate(
                         contactId = id,
                         lookupKey = lookupKey,
                         displayName = displayName,
-                        phoneHint = hint
+                        phoneHint = hint,
+                        rawPhoneNumber = rawPhone
                     )
                 }
             }
@@ -65,7 +67,7 @@ class ContactsRepository(private val context: Context) {
         return results
     }
 
-    private fun fetchMaskedPhoneHint(contactId: Long): String? {
+    fun fetchRawPhoneNumber(contactId: Long): String? {
         val projection = arrayOf(ContactsContract.CommonDataKinds.Phone.NUMBER)
         val selection = "${ContactsContract.CommonDataKinds.Phone.CONTACT_ID} = ?"
         val args = arrayOf(contactId.toString())
@@ -78,12 +80,17 @@ class ContactsRepository(private val context: Context) {
             null
         )?.use { cursor ->
             if (cursor.moveToFirst()) {
-                val raw = cursor.getString(0).orEmpty()
+                val raw = cursor.getString(0).orEmpty().trim()
                 if (raw.isNotBlank()) {
-                    return ActionPolicy.maskPhoneLast4(raw)
+                    return raw
                 }
             }
         }
         return null
+    }
+
+    private fun fetchMaskedPhoneHint(contactId: Long): String? {
+        val raw = fetchRawPhoneNumber(contactId) ?: return null
+        return ActionPolicy.maskPhoneLast4(raw)
     }
 }

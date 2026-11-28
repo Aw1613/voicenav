@@ -4,6 +4,8 @@ enum class SettingDestination(val displayName: String) {
     WIFI("Wi-Fi settings"),
     BLUETOOTH("Bluetooth settings"),
     HOTSPOT("Hotspot and tethering settings"),
+    MOBILE_DATA("Mobile data settings"),
+    AIRPLANE_MODE("Airplane mode settings"),
     DISPLAY("Display settings"),
     SOUND("Sound settings"),
     ACCESSIBILITY("Accessibility settings"),
@@ -63,6 +65,11 @@ sealed interface AssistantAction {
 
     data class PlaceCall(
         val recipient: String
+    ) : AssistantAction
+
+    data class PlaceWhatsAppCall(
+        val recipient: String,
+        val isVideo: Boolean = false
     ) : AssistantAction
 
     data object GoHome : AssistantAction

@@ -53,7 +53,8 @@ class ActionValidator(
 
             is AssistantAction.OpenApp,
             is AssistantAction.OpenNamedApp,
-            is AssistantAction.PlaceCall -> ValidationResult.Valid(plan)
+            is AssistantAction.PlaceCall,
+            is AssistantAction.PlaceWhatsAppCall -> ValidationResult.Valid(plan)
 
             AssistantAction.GoHome,
             AssistantAction.GoBack,

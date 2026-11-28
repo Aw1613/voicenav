@@ -28,9 +28,9 @@ class ContactsActionHandler(
         val clean = recipient.trim()
         val digits = clean.filter { it.isDigit() || it == '+' }
         if (digits.length >= 3) {
-            val outcome = intentExecutor.placeCall(clean)
+            val outcome = intentExecutor.placeCall(clean, directCall = true)
             return if (outcome.launched) {
-                ActionExecutionResult.Executed("Opening phone dialer to call $clean.")
+                ActionExecutionResult.Executed("Calling $clean.")
             } else {
                 ActionExecutionResult.Failed(outcome.errorMessage ?: "Could not open phone dialer.")
             }
@@ -38,28 +38,116 @@ class ContactsActionHandler(
 
         if (contactsRepository.hasReadPermission()) {
             val matches = contactsRepository.searchContacts(clean)
-            if (matches.size == 1 && !matches.first().phoneHint.isNullOrBlank()) {
-                val match = matches.first()
-                val phone = match.phoneHint!!
-                val outcome = intentExecutor.placeCall(phone)
+            // 1. Check for exact match first
+            val exactMatch = matches.firstOrNull {
+                it.displayName.trim().equals(clean, ignoreCase = true) ||
+                it.displayName.trim().equals("my $clean", ignoreCase = true)
+            }
+            if (exactMatch != null && !exactMatch.rawPhoneNumber.isNullOrBlank()) {
+                val phone = exactMatch.rawPhoneNumber!!
+                val outcome = intentExecutor.placeCall(phone, directCall = true)
                 return if (outcome.launched) {
-                    ActionExecutionResult.Executed("Opening phone dialer to call ${match.displayName} ($phone).")
+                    ActionExecutionResult.Executed("Calling ${exactMatch.displayName}.")
                 } else {
-                    ActionExecutionResult.Failed(outcome.errorMessage ?: "Could not open dialer.")
+                    ActionExecutionResult.Failed(outcome.errorMessage ?: "Could not place call.")
+                }
+            }
+
+            if (matches.size == 1 && !matches.first().rawPhoneNumber.isNullOrBlank()) {
+                val match = matches.first()
+                val phone = match.rawPhoneNumber!!
+                val outcome = intentExecutor.placeCall(phone, directCall = true)
+                return if (outcome.launched) {
+                    ActionExecutionResult.Executed("Calling ${match.displayName}.")
+                } else {
+                    ActionExecutionResult.Failed(outcome.errorMessage ?: "Could not place call.")
                 }
             } else if (matches.size > 1) {
+                val sorted = matches.sortedByDescending {
+                    when {
+                        it.displayName.trim().equals(clean, ignoreCase = true) -> 3
+                        it.displayName.trim().equals("my $clean", ignoreCase = true) -> 2
+                        it.displayName.trim().startsWith(clean, ignoreCase = true) -> 1
+                        else -> 0
+                    }
+                }
                 return ActionExecutionResult.NeedsContactSelection(
                     query = clean,
-                    candidates = matches
+                    candidates = sorted,
+                    pendingAction = AssistantAction.PlaceCall(clean)
                 )
             }
         }
 
-        val outcome = intentExecutor.placeCall(clean)
+        val outcome = intentExecutor.placeCall(clean, directCall = true)
         return if (outcome.launched) {
-            ActionExecutionResult.Executed("Opening phone dialer for $clean.")
+            ActionExecutionResult.Executed("Calling $clean.")
         } else {
             ActionExecutionResult.Failed(outcome.errorMessage ?: "Could not open phone dialer.")
+        }
+    }
+
+    fun callWhatsAppContact(recipient: String, isVideo: Boolean): ActionExecutionResult {
+        val clean = recipient.trim()
+        val digits = clean.filter { it.isDigit() || it == '+' }
+        val callType = if (isVideo) "WhatsApp video call" else "WhatsApp call"
+
+        if (digits.length >= 7) {
+            val outcome = intentExecutor.placeWhatsAppCall(clean, isVideo = isVideo)
+            return if (outcome.launched) {
+                ActionExecutionResult.Executed("Starting $callType to $clean.")
+            } else {
+                ActionExecutionResult.Failed(outcome.errorMessage ?: "Could not start $callType.")
+            }
+        }
+
+        if (contactsRepository.hasReadPermission()) {
+            val matches = contactsRepository.searchContacts(clean)
+            val exactMatch = matches.firstOrNull {
+                it.displayName.trim().equals(clean, ignoreCase = true) ||
+                it.displayName.trim().equals("my $clean", ignoreCase = true)
+            }
+            if (exactMatch != null) {
+                val phone = exactMatch.rawPhoneNumber ?: exactMatch.phoneHint ?: exactMatch.displayName
+                val outcome = intentExecutor.placeWhatsAppCall(phone, isVideo = isVideo, contactId = exactMatch.contactId)
+                return if (outcome.launched) {
+                    ActionExecutionResult.Executed("Starting $callType with ${exactMatch.displayName}.")
+                } else {
+                    ActionExecutionResult.Failed(outcome.errorMessage ?: "Could not start $callType.")
+                }
+            }
+
+            if (matches.size == 1) {
+                val match = matches.first()
+                val phone = match.rawPhoneNumber ?: match.phoneHint ?: match.displayName
+                val outcome = intentExecutor.placeWhatsAppCall(phone, isVideo = isVideo, contactId = match.contactId)
+                return if (outcome.launched) {
+                    ActionExecutionResult.Executed("Starting $callType with ${match.displayName}.")
+                } else {
+                    ActionExecutionResult.Failed(outcome.errorMessage ?: "Could not start $callType.")
+                }
+            } else if (matches.size > 1) {
+                val sorted = matches.sortedByDescending {
+                    when {
+                        it.displayName.trim().equals(clean, ignoreCase = true) -> 3
+                        it.displayName.trim().equals("my $clean", ignoreCase = true) -> 2
+                        it.displayName.trim().startsWith(clean, ignoreCase = true) -> 1
+                        else -> 0
+                    }
+                }
+                return ActionExecutionResult.NeedsContactSelection(
+                    query = clean,
+                    candidates = sorted,
+                    pendingAction = AssistantAction.PlaceWhatsAppCall(clean, isVideo = isVideo)
+                )
+            }
+        }
+
+        val outcome = intentExecutor.placeWhatsAppCall(clean, isVideo = isVideo)
+        return if (outcome.launched) {
+            ActionExecutionResult.Executed("Opening WhatsApp for $clean.")
+        } else {
+            ActionExecutionResult.Failed(outcome.errorMessage ?: "Could not start $callType.")
         }
     }
 

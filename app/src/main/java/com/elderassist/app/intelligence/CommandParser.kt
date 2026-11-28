@@ -303,6 +303,22 @@ class CommandParser {
             }
         }
 
+        // WhatsApp Call / Video Call: "whatsapp call Mom", "whatsapp video call Mom", "video call Rahul"
+        val waCallMatch = Regex(
+            """^(?:please |can you |could you )?(?:whatsapp (?:video )?call|video call on whatsapp|call on whatsapp|video call)(?: to)? ([a-zA-Z0-9+\s\-]{2,40})$"""
+        ).find(text)
+        if (waCallMatch != null) {
+            val target = waCallMatch.groupValues[1].trim()
+            val isVideo = text.contains("video")
+            val callType = if (isVideo) "WhatsApp video call" else "WhatsApp call"
+            if (target.isNotEmpty() && !isSettingKeyword(target.lowercase())) {
+                return ParseOutcome.Matched(
+                    action = AssistantAction.PlaceWhatsAppCall(target, isVideo = isVideo),
+                    summaryForUser = "Starting $callType with $target."
+                )
+            }
+        }
+
         // Call contact or number: "call Rahul", "call Mom", "call 9876543210", "make a call to John"
         val callMatch = Regex(
             """^(?:please |can you |could you )?(?:call|phone|dial|make a call to) ([a-zA-Z0-9+\s\-]{2,40})$"""
@@ -312,7 +328,7 @@ class CommandParser {
             if (target.isNotEmpty() && !isSettingKeyword(target.lowercase())) {
                 return ParseOutcome.Matched(
                     action = AssistantAction.PlaceCall(target),
-                    summaryForUser = "Opening phone dialer to call $target."
+                    summaryForUser = "Calling $target."
                 )
             }
         }
@@ -322,6 +338,28 @@ class CommandParser {
 
     private fun parseSettingsCommand(text: String): ParseOutcome.Matched? {
         return when {
+            text.contains("mobile data") ||
+                text.contains("cellular data") ||
+                text.contains("data setting") ||
+                text.contains("data usage") ||
+                text.contains("cellular") ||
+                text.contains("sim card") ||
+                text.contains("mobile network") -> ParseOutcome.Matched(
+                action = AssistantAction.OpenSetting(SettingDestination.MOBILE_DATA),
+                summaryForUser = "Opening mobile data settings."
+            )
+
+            text.contains("airplane mode") ||
+                text.contains("aeroplane mode") ||
+                text.contains("flight mode") ||
+                text == "airplane" ||
+                text == "aeroplane" ||
+                text.contains("turn on airplane") ||
+                text.contains("open airplane") -> ParseOutcome.Matched(
+                action = AssistantAction.OpenSetting(SettingDestination.AIRPLANE_MODE),
+                summaryForUser = "Opening airplane mode settings."
+            )
+
             text.contains("wifi") ||
                 text.contains("wi-fi") ||
                 text.contains("wi fi") ||
@@ -487,6 +525,7 @@ class CommandParser {
     private fun isSettingKeyword(word: String): Boolean {
         val keywords = setOf(
             "wifi", "wi-fi", "bluetooth", "hotspot", "tethering",
+            "mobile data", "data", "cellular", "airplane", "aeroplane", "flight",
             "display", "brightness", "sound", "volume", "accessibility",
             "battery", "settings"
         )

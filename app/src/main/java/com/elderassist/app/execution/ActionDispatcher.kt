@@ -69,6 +69,7 @@ class ActionDispatcher(
         }
 
         is AssistantAction.PlaceCall -> contactsHandler.callContact(action.recipient)
+        is AssistantAction.PlaceWhatsAppCall -> contactsHandler.callWhatsAppContact(action.recipient, action.isVideo)
 
         AssistantAction.GoHome -> accessibilityExecutor.performGlobalNavigation(
             globalAction = AccessibilityService.GLOBAL_ACTION_HOME,

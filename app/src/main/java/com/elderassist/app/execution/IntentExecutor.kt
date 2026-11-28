@@ -33,6 +33,18 @@ class IntentExecutor(private val context: Context) {
                 Settings.ACTION_WIFI_SETTINGS,
                 Settings.ACTION_SETTINGS
             )
+            SettingDestination.MOBILE_DATA -> listOf(
+                Settings.ACTION_DATA_ROAMING_SETTINGS,
+                Settings.ACTION_NETWORK_OPERATOR_SETTINGS,
+                Settings.ACTION_DATA_USAGE_SETTINGS,
+                Settings.ACTION_WIRELESS_SETTINGS,
+                Settings.ACTION_SETTINGS
+            )
+            SettingDestination.AIRPLANE_MODE -> listOf(
+                Settings.ACTION_AIRPLANE_MODE_SETTINGS,
+                Settings.ACTION_WIRELESS_SETTINGS,
+                Settings.ACTION_SETTINGS
+            )
             SettingDestination.DISPLAY -> listOf(
                 Settings.ACTION_DISPLAY_SETTINGS,
                 Settings.ACTION_SETTINGS
@@ -302,7 +314,7 @@ class IntentExecutor(private val context: Context) {
         )
     }
 
-    fun placeCall(recipientNumberOrQuery: String): IntentLaunchOutcome {
+    fun placeCall(recipientNumberOrQuery: String, directCall: Boolean = true): IntentLaunchOutcome {
         val clean = recipientNumberOrQuery.trim()
         val digits = clean.filter { it.isDigit() || it == '+' }
         val uri = if (digits.length >= 3) {
@@ -310,17 +322,107 @@ class IntentExecutor(private val context: Context) {
         } else {
             android.net.Uri.parse("tel:${android.net.Uri.encode(clean)}")
         }
+
+        // 1. Try direct call if CALL_PHONE permission is granted
+        if (directCall && context.checkSelfPermission(android.Manifest.permission.CALL_PHONE) == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            try {
+                val callIntent = Intent(Intent.ACTION_CALL, uri).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                val callRes = launchIntent(callIntent, "Could not place direct call.")
+                if (callRes.launched) return callRes
+            } catch (_: SecurityException) {}
+        }
+
+        // 2. Fallback: ACTION_DIAL with number pre-filled
         val dialIntent = Intent(Intent.ACTION_DIAL, uri).apply {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         }
         val outcome = launchIntent(dialIntent, "Could not open phone dialer.")
         if (outcome.launched) return outcome
 
-        // Fallback: generic dialer intent
+        // 3. Fallback: generic dialer intent
         val genericDialer = Intent(Intent.ACTION_DIAL).apply {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         }
         return launchIntent(genericDialer, "Could not open phone dialer.")
+    }
+
+    fun placeWhatsAppCall(
+        recipientPhoneOrQuery: String,
+        isVideo: Boolean = false,
+        contactId: Long? = null
+    ): IntentLaunchOutcome {
+        val clean = recipientPhoneOrQuery.trim()
+        val digits = clean.filter { it.isDigit() || it == '+' }
+
+        // 1. If contactId is provided, query ContactsContract.Data for WhatsApp MIME type
+        if (contactId != null && contactId > 0) {
+            try {
+                val mimeType = if (isVideo) {
+                    "vnd.android.cursor.item/vnd.com.whatsapp.video.call"
+                } else {
+                    "vnd.android.cursor.item/vnd.com.whatsapp.call"
+                }
+                val projection = arrayOf(android.provider.ContactsContract.Data._ID)
+                val selection = "${android.provider.ContactsContract.Data.CONTACT_ID} = ? AND (${android.provider.ContactsContract.Data.MIMETYPE} = ? OR ${android.provider.ContactsContract.Data.MIMETYPE} = ?)"
+                val args = arrayOf(
+                    contactId.toString(),
+                    mimeType,
+                    if (isVideo) mimeType else "vnd.android.cursor.item/vnd.com.whatsapp.voip.call"
+                )
+                context.contentResolver.query(
+                    android.provider.ContactsContract.Data.CONTENT_URI,
+                    projection,
+                    selection,
+                    args,
+                    null
+                )?.use { cursor ->
+                    if (cursor.moveToFirst()) {
+                        val dataId = cursor.getLong(0)
+                        val waCallIntent = Intent(Intent.ACTION_VIEW).apply {
+                            setDataAndType(
+                                android.net.Uri.parse("content://com.android.contacts/data/$dataId"),
+                                mimeType
+                            )
+                            setPackage("com.whatsapp")
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        }
+                        val outcome = launchIntent(waCallIntent, "Could not initiate WhatsApp call.")
+                        if (outcome.launched) return outcome
+                    }
+                }
+            } catch (_: Exception) {}
+        }
+
+        // 2. Fallback: launch WhatsApp chat/call via URL scheme
+        if (digits.length >= 7) {
+            val phoneDigits = digits.removePrefix("+")
+            try {
+                val waUri = android.net.Uri.parse("https://api.whatsapp.com/send?phone=$phoneDigits")
+                val waIntent = Intent(Intent.ACTION_VIEW, waUri).apply {
+                    setPackage("com.whatsapp")
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                val outcome = launchIntent(waIntent, "Could not open WhatsApp.")
+                if (outcome.launched) return outcome
+            } catch (_: Exception) {}
+        }
+
+        // 3. Fallback: launch WhatsApp app directly
+        val waLaunch = context.packageManager.getLaunchIntentForPackage("com.whatsapp")
+            ?: context.packageManager.getLaunchIntentForPackage("com.whatsapp.w4b")
+        if (waLaunch != null) {
+            waLaunch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            return launchIntent(waLaunch, "Could not open WhatsApp.")
+        }
+
+        return IntentLaunchOutcome(
+            launched = false,
+            usedFallback = false,
+            resolvedPackage = null,
+            errorMessage = "WhatsApp is not installed on this device."
+        )
     }
 
     private fun launchIntent(intent: Intent, failureMessage: String): IntentLaunchOutcome {

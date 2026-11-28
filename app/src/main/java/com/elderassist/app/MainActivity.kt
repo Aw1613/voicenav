@@ -30,9 +30,10 @@ class MainActivity : ComponentActivity() {
             }
 
             val contactsLauncher = rememberLauncherForActivityResult(
-                contract = ActivityResultContracts.RequestPermission()
-            ) { granted ->
-                viewModel.onContactsPermissionResult(granted)
+                contract = ActivityResultContracts.RequestMultiplePermissions()
+            ) { perms ->
+                val contactsGranted = perms[Manifest.permission.READ_CONTACTS] ?: false
+                viewModel.onContactsPermissionResult(contactsGranted)
             }
 
             LaunchedEffect(state.requestMicPermissionPrompt) {
@@ -43,7 +44,12 @@ class MainActivity : ComponentActivity() {
 
             LaunchedEffect(state.requestContactsPermissionPrompt) {
                 if (state.requestContactsPermissionPrompt) {
-                    contactsLauncher.launch(Manifest.permission.READ_CONTACTS)
+                    contactsLauncher.launch(
+                        arrayOf(
+                            Manifest.permission.READ_CONTACTS,
+                            Manifest.permission.CALL_PHONE
+                        )
+                    )
                 }
             }
 

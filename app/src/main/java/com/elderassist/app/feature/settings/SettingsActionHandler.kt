@@ -27,6 +27,10 @@ class SettingsActionHandler(
             } else {
                 "I've opened network and wireless settings. Look for Hotspot & tethering here."
             }
+            SettingDestination.MOBILE_DATA ->
+                "I've opened Mobile data settings. You can manage your mobile network or data usage here."
+            SettingDestination.AIRPLANE_MODE ->
+                "I've opened Airplane mode settings. You can turn Airplane mode on or off here."
             SettingDestination.DISPLAY ->
                 "I've opened Display settings. You can adjust brightness or text size here."
             SettingDestination.SOUND ->

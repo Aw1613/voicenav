@@ -35,7 +35,9 @@ class CommandParserTest {
             "Open accessibility settings" to SettingDestination.ACCESSIBILITY,
             "Help me make text bigger" to SettingDestination.ACCESSIBILITY,
             "Open battery settings" to SettingDestination.BATTERY,
-            "Show battery usage" to SettingDestination.BATTERY
+            "Show battery usage" to SettingDestination.BATTERY,
+            "Open mobile data" to SettingDestination.MOBILE_DATA,
+            "Turn on airplane mode" to SettingDestination.AIRPLANE_MODE
         )
 
         cases.forEach { (input, expectedDestination) ->
@@ -104,5 +106,14 @@ class CommandParserTest {
             ),
             rename
         )
+
+        val call = (parser.parse("Call Mom") as ParseOutcome.Matched).action
+        assertEquals(AssistantAction.PlaceCall("Mom"), call)
+
+        val waCall = (parser.parse("WhatsApp call Mom") as ParseOutcome.Matched).action
+        assertEquals(AssistantAction.PlaceWhatsAppCall("Mom", isVideo = false), waCall)
+
+        val videoCall = (parser.parse("Video call Mom") as ParseOutcome.Matched).action
+        assertEquals(AssistantAction.PlaceWhatsAppCall("Mom", isVideo = true), videoCall)
     }
 }
