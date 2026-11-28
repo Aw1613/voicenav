@@ -163,12 +163,32 @@ fun PermissionsPrivacyScreen(
             title = "Accessibility",
             isReady = caps.accessibilityEnabled,
             whyWeAsk = "Allows ElderAssist to perform Go Home, Go Back, Recent apps, and optional step-by-step guidance.",
-            goodToKnow = "Good to know: Enabling Master AI does not automatically enable Accessibility. You turn it on manually in Android Accessibility settings.",
+            goodToKnow = if (android.os.Build.VERSION.SDK_INT >= 33 && !caps.accessibilityEnabled) {
+                "Android 13+ Note: If Accessibility is greyed out with 'Restricted setting', tap 'Open App Info' below, tap the 3 dots (⋮) in the top-right corner, and select 'Allow restricted settings'."
+            } else {
+                "Good to know: Enabling Master AI does not automatically enable Accessibility. You turn it on manually in Android Accessibility settings."
+            },
             learnMoreText = "ElderAssist ignores password, OTP, banking, and payment screens, and never inspects apps when idle.",
             howToTurnOffText = "Open Phone Settings -> Accessibility -> ElderAssist Navigation Helper -> Turn Off.",
-            setupButtonLabel = "Set up Accessibility",
-            onSetupClick = onOpenAccessibilitySettings
+            setupButtonLabel = if (android.os.Build.VERSION.SDK_INT >= 33 && !caps.accessibilityEnabled) "Open App Info (Step 1)" else "Set up Accessibility",
+            onSetupClick = if (android.os.Build.VERSION.SDK_INT >= 33 && !caps.accessibilityEnabled) onOpenAppSettings else onOpenAccessibilitySettings
         )
+
+        if (android.os.Build.VERSION.SDK_INT >= 33 && !caps.accessibilityEnabled) {
+            androidx.compose.material3.OutlinedButton(
+                onClick = onOpenAccessibilitySettings,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(52.dp),
+                shape = androidx.compose.foundation.shape.RoundedCornerShape(14.dp)
+            ) {
+                Text(
+                    text = "Go to Accessibility Settings (Step 2)",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+        }
 
         // Fixed UI misalignment: Full "Internet & AI" title without "Internet / AI co..." truncation
         PermissionStatusCard(
