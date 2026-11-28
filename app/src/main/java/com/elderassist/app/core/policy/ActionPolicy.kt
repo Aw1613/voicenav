@@ -48,6 +48,8 @@ object ActionPolicy {
     fun riskLevelFor(action: AssistantAction): RiskLevel = when (action) {
         is AssistantAction.OpenSetting,
         is AssistantAction.OpenApp,
+        is AssistantAction.OpenNamedApp,
+        is AssistantAction.PlaceCall,
         AssistantAction.GoHome,
         AssistantAction.GoBack,
         AssistantAction.OpenRecents,

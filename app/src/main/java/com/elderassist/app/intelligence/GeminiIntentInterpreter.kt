@@ -30,6 +30,7 @@ class GeminiIntentInterpreter(
                 put("enum", buildJsonArray {
                     add(kotlinx.serialization.json.JsonPrimitive("OPEN_SETTING"))
                     add(kotlinx.serialization.json.JsonPrimitive("OPEN_APP"))
+                    add(kotlinx.serialization.json.JsonPrimitive("CALL_CONTACT"))
                     add(kotlinx.serialization.json.JsonPrimitive("GO_HOME"))
                     add(kotlinx.serialization.json.JsonPrimitive("GO_BACK"))
                     add(kotlinx.serialization.json.JsonPrimitive("OPEN_RECENTS"))
@@ -48,6 +49,10 @@ class GeminiIntentInterpreter(
                         add(kotlinx.serialization.json.JsonPrimitive(it.name))
                     }
                 })
+            })
+            put("app_name", buildJsonObject {
+                put("type", "STRING")
+                put("nullable", true)
             })
             put("contact_query", buildJsonObject {
                 put("type", "STRING")
@@ -90,10 +95,23 @@ class GeminiIntentInterpreter(
 
         val prompt = buildString {
             appendLine("You interpret voice requests from an older adult using an Android accessibility assistant.")
-            appendLine("Never invent actions outside the allowed schema.")
-            appendLine("Never approve deletion, banking, payments, calling, or sending messages—map those to UNSUPPORTED.")
-            appendLine("If the request is ambiguous (e.g. unclear which setting), return ASK_CLARIFICATION with a short simple question.")
-            appendLine("Allowed destinations for OPEN_SETTING: WIFI, BLUETOOTH, HOTSPOT, DISPLAY, SOUND, ACCESSIBILITY, BATTERY, GENERAL_SETTINGS.")
+            appendLine("Categorize the user's request accurately into one of the allowed intents:")
+            appendLine("1. OPEN_SETTING: Use when user wants to change settings, including indirect/conversational descriptions:")
+            appendLine("   - Screen brightness, glare, 'can't see the text/screen', 'too dark', 'too bright', font size, display -> destination: DISPLAY")
+            appendLine("   - Sound, volume, 'too quiet', 'can't hear', ringer, loudness -> destination: SOUND")
+            appendLine("   - Internet, Wi-Fi, 'connect to network', hotel wifi, mobile data -> destination: WIFI")
+            appendLine("   - Bluetooth, headphones, hearing aid, earbuds -> destination: BLUETOOTH")
+            appendLine("   - Hotspot, tethering -> destination: HOTSPOT")
+            appendLine("   - Battery, power saving, phone dying -> destination: BATTERY")
+            appendLine("   - Accessibility, talkback, screen reader, magnification -> destination: ACCESSIBILITY")
+            appendLine("   - General phone settings -> destination: GENERAL_SETTINGS")
+            appendLine("2. OPEN_APP: Use when user asks to open ANY app (e.g. 'open WhatsApp', 'open messages', 'open call log', 'open camera', 'open youtube', 'open contacts', etc.). Set app_name to the name of the app.")
+            appendLine("3. CALL_CONTACT: Use when user asks to call someone (e.g. 'call Rahul', 'call doctor', 'call 9876543210'). Set contact_query to the name, or phone_number to digits.")
+            appendLine("4. SEARCH_CONTACT: Use when user wants to look up or find someone's phone number or contact info.")
+            appendLine("5. CREATE_CONTACT: Use when user wants to add/save a new contact name and number.")
+            appendLine("6. GO_HOME, GO_BACK, OPEN_RECENTS: Basic navigation.")
+            appendLine("7. If request is ambiguous, return ASK_CLARIFICATION with a short simple question.")
+            appendLine("8. Never approve deletion, banking, money transfer, or financial payments—map those to UNSUPPORTED.")
             appendLine("User request: \"$transcript\"")
         }
 
@@ -107,6 +125,23 @@ class GeminiIntentInterpreter(
         return parseAndValidateResponse(jsonString)
     }
 
+    private fun resolveDestination(raw: String?): SettingDestination? {
+        if (raw.isNullOrBlank()) return null
+        val upper = raw.trim().uppercase()
+        return SettingDestination.entries.firstOrNull { it.name == upper }
+            ?: when {
+                upper.contains("DISPLAY") || upper.contains("BRIGHTNESS") || upper.contains("SCREEN") || upper.contains("FONT") -> SettingDestination.DISPLAY
+                upper.contains("SOUND") || upper.contains("VOLUME") || upper.contains("AUDIO") || upper.contains("RING") -> SettingDestination.SOUND
+                upper.contains("WIFI") || upper.contains("WI-FI") || upper.contains("INTERNET") || upper.contains("NETWORK") -> SettingDestination.WIFI
+                upper.contains("BLUETOOTH") || upper.contains("HEADPHONE") || upper.contains("EARBUD") -> SettingDestination.BLUETOOTH
+                upper.contains("HOTSPOT") || upper.contains("TETHERING") -> SettingDestination.HOTSPOT
+                upper.contains("BATTERY") || upper.contains("POWER") -> SettingDestination.BATTERY
+                upper.contains("ACCESSIBILITY") || upper.contains("TALKBACK") -> SettingDestination.ACCESSIBILITY
+                upper.contains("SETTING") -> SettingDestination.GENERAL_SETTINGS
+                else -> null
+            }
+    }
+
     fun parseAndValidateResponse(rawJson: String): IntentInterpretationResult {
         val dto = try {
             GeminiStrictJson.parser.decodeFromString<GeminiIntentResponseDto>(rawJson)
@@ -116,13 +151,23 @@ class GeminiIntentInterpreter(
             )
         }
 
-        if (dto.confidence !in 0.0..1.0) {
+        val rawIntentUpper = dto.intent.trim().uppercase()
+
+        // Normalize fuzzy intents
+        val normalizedIntent = when {
+            rawIntentUpper.contains("CALL") -> "CALL_CONTACT"
+            rawIntentUpper.contains("APP") || !dto.appName.isNullOrBlank() -> "OPEN_APP"
+            rawIntentUpper.contains("SETTING") || rawIntentUpper.contains("BRIGHTNESS") || rawIntentUpper.contains("DISPLAY") || rawIntentUpper.contains("VOLUME") || rawIntentUpper.contains("SOUND") || rawIntentUpper.contains("WIFI") || rawIntentUpper.contains("BATTERY") -> "OPEN_SETTING"
+            else -> rawIntentUpper
+        }
+
+        if (dto.confidence !in 0.0..1.0 && dto.confidence != 0.0) {
             return IntentInterpretationResult.Rejected("Confidence out of range.")
         }
 
         if (dto.confidence < ActionPolicy.MIN_AI_INTENT_CONFIDENCE &&
-            dto.intent != "ASK_CLARIFICATION" &&
-            dto.intent != "UNSUPPORTED"
+            normalizedIntent != "ASK_CLARIFICATION" &&
+            normalizedIntent != "UNSUPPORTED"
         ) {
             val question = dto.clarificationQuestion?.takeIf { it.isNotBlank() }
                 ?: "I wasn't sure what you meant. Could you say that another way?"
@@ -132,17 +177,40 @@ class GeminiIntentInterpreter(
             )
         }
 
-        val action: AssistantAction = when (dto.intent) {
+        val action: AssistantAction = when (normalizedIntent) {
             "OPEN_SETTING" -> {
-                val dest = dto.destination?.let { name ->
-                    SettingDestination.entries.firstOrNull { it.name == name }
-                } ?: return IntentInterpretationResult.Rejected(
-                    "Unknown setting destination returned by AI."
-                )
+                val dest = resolveDestination(dto.destination)
+                    ?: resolveDestination(rawIntentUpper)
+                    ?: return IntentInterpretationResult.Rejected(
+                        "Unknown setting destination returned by AI."
+                    )
                 AssistantAction.OpenSetting(dest)
             }
 
-            "OPEN_APP" -> AssistantAction.OpenApp(SupportedApp.CONTACTS)
+            "OPEN_APP" -> {
+                val targetApp = dto.appName?.trim()?.takeIf { it.isNotBlank() }
+                    ?: dto.contactQuery?.trim()?.takeIf { it.isNotBlank() }
+                if (targetApp != null) {
+                    if (targetApp.equals("contacts", ignoreCase = true)) {
+                        AssistantAction.OpenApp(SupportedApp.CONTACTS)
+                    } else if (targetApp.equals("settings", ignoreCase = true)) {
+                        AssistantAction.OpenSetting(SettingDestination.GENERAL_SETTINGS)
+                    } else {
+                        AssistantAction.OpenNamedApp(targetApp)
+                    }
+                } else {
+                    AssistantAction.OpenApp(SupportedApp.CONTACTS)
+                }
+            }
+
+            "CALL_CONTACT" -> {
+                val target = dto.phoneNumber?.trim()?.takeIf { it.isNotBlank() }
+                    ?: dto.contactQuery?.trim()?.takeIf { it.isNotBlank() }
+                    ?: dto.contactName?.trim()?.takeIf { it.isNotBlank() }
+                    ?: return IntentInterpretationResult.Rejected("Please specify who you would like to call.")
+                AssistantAction.PlaceCall(target)
+            }
+
             "GO_HOME" -> AssistantAction.GoHome
             "GO_BACK" -> AssistantAction.GoBack
             "OPEN_RECENTS" -> AssistantAction.OpenRecents

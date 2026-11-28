@@ -24,6 +24,45 @@ class ContactsActionHandler(
         }
     }
 
+    fun callContact(recipient: String): ActionExecutionResult {
+        val clean = recipient.trim()
+        val digits = clean.filter { it.isDigit() || it == '+' }
+        if (digits.length >= 3) {
+            val outcome = intentExecutor.placeCall(clean)
+            return if (outcome.launched) {
+                ActionExecutionResult.Executed("Opening phone dialer to call $clean.")
+            } else {
+                ActionExecutionResult.Failed(outcome.errorMessage ?: "Could not open phone dialer.")
+            }
+        }
+
+        if (contactsRepository.hasReadPermission()) {
+            val matches = contactsRepository.searchContacts(clean)
+            if (matches.size == 1 && !matches.first().phoneHint.isNullOrBlank()) {
+                val match = matches.first()
+                val phone = match.phoneHint!!
+                val outcome = intentExecutor.placeCall(phone)
+                return if (outcome.launched) {
+                    ActionExecutionResult.Executed("Opening phone dialer to call ${match.displayName} ($phone).")
+                } else {
+                    ActionExecutionResult.Failed(outcome.errorMessage ?: "Could not open dialer.")
+                }
+            } else if (matches.size > 1) {
+                return ActionExecutionResult.NeedsContactSelection(
+                    query = clean,
+                    candidates = matches
+                )
+            }
+        }
+
+        val outcome = intentExecutor.placeCall(clean)
+        return if (outcome.launched) {
+            ActionExecutionResult.Executed("Opening phone dialer for $clean.")
+        } else {
+            ActionExecutionResult.Failed(outcome.errorMessage ?: "Could not open phone dialer.")
+        }
+    }
+
     fun searchContact(query: String): ActionExecutionResult {
         if (!contactsRepository.hasReadPermission()) {
             return ActionExecutionResult.Failed(

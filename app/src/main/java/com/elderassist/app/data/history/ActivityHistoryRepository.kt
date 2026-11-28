@@ -114,6 +114,10 @@ class ActivityHistoryRepository(
                 SupportedApp.SETTINGS -> "ACT-SET" to "Opened Phone settings"
             }
 
+            is AssistantAction.OpenNamedApp -> "ACT-APP" to "Opened ${action.appName}"
+
+            is AssistantAction.PlaceCall -> "ACT-CALL" to "Called ${action.recipient}"
+
             AssistantAction.GoHome -> ActionId.GO_HOME.code to "Returned to Home screen"
             AssistantAction.GoBack -> ActionId.GO_BACK.code to "Navigated Back"
             AssistantAction.OpenRecents -> ActionId.OPEN_RECENTS.code to "Opened Recent apps"

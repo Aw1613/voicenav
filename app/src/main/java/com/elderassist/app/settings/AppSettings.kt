@@ -34,7 +34,7 @@ enum class FeedbackLevel(val label: String) {
 
 data class UserPreferences(
     val masterAiEnabled: Boolean = true,
-    val experimentalAiNavigationEnabled: Boolean = false,
+    val experimentalAiNavigationEnabled: Boolean = true,
     val ttsEnabled: Boolean = true,
     val speechLanguageTag: String = "en-IN",
     val speechSpeed: SpeechSpeed = SpeechSpeed.NORMAL,
@@ -64,7 +64,7 @@ class AppSettings(private val context: Context) {
     val preferences: Flow<UserPreferences> = context.elderAssistDataStore.data.map { prefs ->
         UserPreferences(
             masterAiEnabled = prefs[Keys.MASTER_AI_ENABLED] ?: true,
-            experimentalAiNavigationEnabled = prefs[Keys.EXPERIMENTAL_AI_NAV] ?: false,
+            experimentalAiNavigationEnabled = prefs[Keys.EXPERIMENTAL_AI_NAV] ?: true,
             ttsEnabled = prefs[Keys.TTS_ENABLED] ?: true,
             speechLanguageTag = prefs[Keys.SPEECH_LANGUAGE_TAG] ?: "en-IN",
             speechSpeed = enumOrDefault(prefs[Keys.SPEECH_SPEED], SpeechSpeed.NORMAL),

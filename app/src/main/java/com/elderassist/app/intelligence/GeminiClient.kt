@@ -36,8 +36,15 @@ class HttpGeminiClient(
     private val apiKey: String = BuildConfig.GEMINI_API_KEY.ifEmpty {
         String(android.util.Base64.decode("QVEuQWI4Uk42TDNadXJ4XzBlMXp5WGlBYVB3MkNURDNFd1lMa3JzZS1RZ3BTbGRNcTJ2UkE=", android.util.Base64.DEFAULT))
     },
-    private val modelName: String = BuildConfig.GEMINI_MODEL
+    private val modelName: String = BuildConfig.GEMINI_MODEL.ifEmpty { "gemini-3.5-flash-lite" }
 ) : GeminiClient {
+
+    private val candidateModels: List<String> = listOf(
+        modelName,
+        "gemini-3.5-flash-lite",
+        "gemini-3.5-flash",
+        "gemini-flash-latest"
+    ).filter { it.isNotBlank() }.distinct()
 
     override fun isConfigured(): Boolean = apiKey.isNotBlank()
 
@@ -50,9 +57,6 @@ class HttpGeminiClient(
                 IllegalStateException("Gemini API key is not configured.")
             )
         }
-
-        val endpoint =
-            "https://generativelanguage.googleapis.com/v1beta/models/$modelName:generateContent"
 
         val requestPayload = buildJsonObject {
             put("contents", buildJsonArray {
@@ -71,63 +75,68 @@ class HttpGeminiClient(
             })
         }
 
-        var connection: HttpURLConnection? = null
-        try {
-            val url = URL(endpoint)
-            connection = (url.openConnection() as HttpURLConnection).apply {
-                requestMethod = "POST"
-                connectTimeout = 10_000
-                readTimeout = 15_000
-                doOutput = true
-                setRequestProperty("Content-Type", "application/json; charset=UTF-8")
-                setRequestProperty("x-goog-api-key", apiKey)
-            }
+        var lastError: Exception? = null
 
-            OutputStreamWriter(connection.outputStream, Charsets.UTF_8).use { writer ->
-                writer.write(Json.encodeToString(requestPayload))
-                writer.flush()
-            }
+        for (candidate in candidateModels) {
+            val endpoint =
+                "https://generativelanguage.googleapis.com/v1beta/models/$candidate:generateContent"
 
-            val code = connection.responseCode
-            val stream = if (code in 200..299) {
-                connection.inputStream
-            } else {
-                connection.errorStream
-            }
-            val bodyText = stream?.use {
-                BufferedReader(InputStreamReader(it, Charsets.UTF_8)).readText()
-            }.orEmpty()
+            var connection: HttpURLConnection? = null
+            try {
+                val url = URL(endpoint)
+                connection = (url.openConnection() as HttpURLConnection).apply {
+                    requestMethod = "POST"
+                    connectTimeout = 10_000
+                    readTimeout = 15_000
+                    doOutput = true
+                    setRequestProperty("Content-Type", "application/json; charset=UTF-8")
+                    setRequestProperty("x-goog-api-key", apiKey)
+                }
 
-            if (code !in 200..299) {
-                return@withContext Result.failure(
-                    IllegalStateException("AI service returned status $code")
-                )
-            }
+                OutputStreamWriter(connection.outputStream, Charsets.UTF_8).use { writer ->
+                    writer.write(Json.encodeToString(requestPayload))
+                    writer.flush()
+                }
 
-            val root = Json.parseToJsonElement(bodyText).jsonObject
-            val candidates = root["candidates"]?.jsonArray
-            val text = candidates
-                ?.firstOrNull()
-                ?.jsonObject
-                ?.get("content")
-                ?.jsonObject
-                ?.get("parts")
-                ?.jsonArray
-                ?.firstOrNull()
-                ?.jsonObject
-                ?.get("text")
-                ?.jsonPrimitive
-                ?.content
+                val code = connection.responseCode
+                val stream = if (code in 200..299) {
+                    connection.inputStream
+                } else {
+                    connection.errorStream
+                }
+                val bodyText = stream?.use {
+                    BufferedReader(InputStreamReader(it, Charsets.UTF_8)).readText()
+                }.orEmpty()
 
-            if (text.isNullOrBlank()) {
-                Result.failure(IllegalStateException("AI service returned an empty response."))
-            } else {
-                Result.success(text)
+                if (code in 200..299) {
+                    val root = Json.parseToJsonElement(bodyText).jsonObject
+                    val candidates = root["candidates"]?.jsonArray
+                    val text = candidates
+                        ?.firstOrNull()
+                        ?.jsonObject
+                        ?.get("content")
+                        ?.jsonObject
+                        ?.get("parts")
+                        ?.jsonArray
+                        ?.firstOrNull()
+                        ?.jsonObject
+                        ?.get("text")
+                        ?.jsonPrimitive
+                        ?.content
+
+                    if (!text.isNullOrBlank()) {
+                        return@withContext Result.success(text)
+                    }
+                } else {
+                    lastError = IllegalStateException("AI model $candidate returned status $code: $bodyText")
+                }
+            } catch (e: Exception) {
+                lastError = e
+            } finally {
+                connection?.disconnect()
             }
-        } catch (e: Exception) {
-            Result.failure(e)
-        } finally {
-            connection?.disconnect()
         }
+
+        Result.failure(lastError ?: IllegalStateException("All AI candidate models failed."))
     }
 }

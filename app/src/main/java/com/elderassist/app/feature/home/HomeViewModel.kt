@@ -750,7 +750,7 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         source: ActionSource,
         summary: String
     ) {
-        if ((action is AssistantAction.SearchContact || action is AssistantAction.RenameContact) &&
+        if ((action is AssistantAction.SearchContact || action is AssistantAction.RenameContact || (action is AssistantAction.PlaceCall && action.recipient.any { it.isLetter() })) &&
             !_uiState.value.hasContactsPermission
         ) {
             pendingCommandAfterPermission = originalTranscript

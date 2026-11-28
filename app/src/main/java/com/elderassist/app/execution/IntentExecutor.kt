@@ -139,6 +139,104 @@ class IntentExecutor(private val context: Context) {
         return launchIntent(intent, "Could not open the contact editor on this phone.")
     }
 
+    fun openAppByName(appName: String): IntentLaunchOutcome {
+        val cleanName = appName.trim().lowercase()
+
+        // 1. Direct package / Category shortcuts
+        val intentToTry = when {
+            cleanName == "whatsapp" || cleanName.contains("whatsapp") -> {
+                context.packageManager.getLaunchIntentForPackage("com.whatsapp")
+                    ?: context.packageManager.getLaunchIntentForPackage("com.whatsapp.w4b")
+            }
+            cleanName.contains("message") || cleanName.contains("sms") || cleanName.contains("text") -> {
+                Intent.makeMainSelectorActivity(Intent.ACTION_MAIN, Intent.CATEGORY_APP_MESSAGING)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            cleanName.contains("call log") || cleanName.contains("call history") || cleanName.contains("dialer") || cleanName == "phone" -> {
+                Intent(Intent.ACTION_VIEW, android.provider.CallLog.Calls.CONTENT_URI)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            cleanName == "camera" || cleanName.contains("camera") -> {
+                Intent.makeMainSelectorActivity(Intent.ACTION_MAIN, Intent.CATEGORY_APP_CAMERA)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            cleanName == "gallery" || cleanName.contains("photo") -> {
+                Intent.makeMainSelectorActivity(Intent.ACTION_MAIN, Intent.CATEGORY_APP_GALLERY)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            cleanName.contains("browser") || cleanName == "chrome" || cleanName.contains("internet") -> {
+                Intent.makeMainSelectorActivity(Intent.ACTION_MAIN, Intent.CATEGORY_APP_BROWSER)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            cleanName.contains("youtube") -> {
+                context.packageManager.getLaunchIntentForPackage("com.google.android.youtube")
+            }
+            cleanName.contains("contact") -> {
+                return openContactsApp()
+            }
+            cleanName.contains("setting") -> {
+                return openSetting(SettingDestination.GENERAL_SETTINGS)
+            }
+            else -> null
+        }
+
+        if (intentToTry != null) {
+            val outcome = launchIntent(intentToTry, "Could not open $appName.")
+            if (outcome.launched) return outcome
+        }
+
+        // 2. Search installed applications by display label
+        try {
+            val pm = context.packageManager
+            val launcherIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+            val activities = pm.queryIntentActivities(launcherIntent, 0)
+
+            val exactMatch = activities.firstOrNull {
+                it.loadLabel(pm).toString().trim().equals(cleanName, ignoreCase = true)
+            }
+            val targetActivity = exactMatch ?: activities.firstOrNull {
+                it.loadLabel(pm).toString().trim().lowercase().contains(cleanName) ||
+                    it.activityInfo.packageName.lowercase().contains(cleanName)
+            }
+
+            if (targetActivity != null) {
+                val launchIntent = pm.getLaunchIntentForPackage(targetActivity.activityInfo.packageName)
+                if (launchIntent != null) {
+                    launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    return launchIntent(launchIntent, "Could not launch ${targetActivity.loadLabel(pm)}.")
+                }
+            }
+        } catch (_: Exception) {}
+
+        return IntentLaunchOutcome(
+            launched = false,
+            usedFallback = false,
+            resolvedPackage = null,
+            errorMessage = "I couldn't find an app named '$appName' installed on this device."
+        )
+    }
+
+    fun placeCall(recipientNumberOrQuery: String): IntentLaunchOutcome {
+        val clean = recipientNumberOrQuery.trim()
+        val digits = clean.filter { it.isDigit() || it == '+' }
+        val uri = if (digits.length >= 3) {
+            android.net.Uri.parse("tel:$digits")
+        } else {
+            android.net.Uri.parse("tel:${android.net.Uri.encode(clean)}")
+        }
+        val dialIntent = Intent(Intent.ACTION_DIAL, uri).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        val outcome = launchIntent(dialIntent, "Could not open phone dialer.")
+        if (outcome.launched) return outcome
+
+        // Fallback: generic dialer intent
+        val genericDialer = Intent(Intent.ACTION_DIAL).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        return launchIntent(genericDialer, "Could not open phone dialer.")
+    }
+
     private fun launchIntent(intent: Intent, failureMessage: String): IntentLaunchOutcome {
         val resolved = intent.resolveActivity(context.packageManager)
             ?: return IntentLaunchOutcome(false, false, null, failureMessage)

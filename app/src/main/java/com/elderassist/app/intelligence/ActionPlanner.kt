@@ -26,6 +26,7 @@ class DefaultActionPlanner : ActionPlanner {
     ): ActionPlan {
         val expectedPackage = when (action) {
             is AssistantAction.OpenSetting -> "com.android.settings"
+            is AssistantAction.OpenNamedApp -> action.packageName
             else -> null
         }
         return ActionPlan(

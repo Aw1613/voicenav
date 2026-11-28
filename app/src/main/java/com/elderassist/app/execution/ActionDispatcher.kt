@@ -14,7 +14,8 @@ class ActionDispatcher(
     private val validator: ActionValidator,
     private val settingsHandler: SettingsActionHandler,
     private val contactsHandler: ContactsActionHandler,
-    private val accessibilityExecutor: AccessibilityExecutor
+    private val accessibilityExecutor: AccessibilityExecutor,
+    private val intentExecutor: IntentExecutor? = null
 ) {
 
     fun dispatch(plan: ActionPlan, context: ExecutionContext): ActionExecutionResult {
@@ -52,6 +53,22 @@ class ActionDispatcher(
             SupportedApp.CONTACTS -> contactsHandler.openContacts()
             SupportedApp.SETTINGS -> settingsHandler.open(com.elderassist.app.core.model.SettingDestination.GENERAL_SETTINGS)
         }
+
+        is AssistantAction.OpenNamedApp -> {
+            val outcome = intentExecutor?.openAppByName(action.appName)
+            if (outcome?.launched == true) {
+                ActionExecutionResult.Executed(
+                    message = "I've opened ${action.appName}.",
+                    openedPackage = outcome.resolvedPackage
+                )
+            } else {
+                ActionExecutionResult.Failed(
+                    userMessage = outcome?.errorMessage ?: "Could not open ${action.appName}."
+                )
+            }
+        }
+
+        is AssistantAction.PlaceCall -> contactsHandler.callContact(action.recipient)
 
         AssistantAction.GoHome -> accessibilityExecutor.performGlobalNavigation(
             globalAction = AccessibilityService.GLOBAL_ACTION_HOME,

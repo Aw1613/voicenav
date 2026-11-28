@@ -15,6 +15,8 @@ data class GeminiIntentResponseDto(
     val phoneNumber: String? = null,
     @SerialName("new_contact_name")
     val newContactName: String? = null,
+    @SerialName("app_name")
+    val appName: String? = null,
     val confidence: Double,
     @SerialName("requires_confirmation")
     val requiresConfirmation: Boolean = false,
@@ -45,6 +47,6 @@ object GeminiStrictJson {
     val parser = kotlinx.serialization.json.Json {
         ignoreUnknownKeys = false
         isLenient = false
-        explicitNulls = true
+        explicitNulls = false
     }
 }

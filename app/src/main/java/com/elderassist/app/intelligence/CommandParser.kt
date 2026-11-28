@@ -94,6 +94,9 @@ class CommandParser {
         // 6. Seven supported Settings destinations + general settings.
         parseSettingsCommand(normalized)?.let { return it }
 
+        // 7. Open any installed app (e.g. WhatsApp, Messages, Call Log, Camera, YouTube).
+        parseAppCommand(normalized)?.let { return it }
+
         return ParseOutcome.Unmatched(normalized)
     }
 
@@ -137,11 +140,9 @@ class CommandParser {
             )
         }
 
-        if (Regex("""\b(send (?:a )?(?:message|text|sms)|whatsapp|make a call)\b|^(?:please |can you )?(?:text|call) \w+""")
-                .containsMatchIn(text)
-        ) {
+        if (Regex("""\b(send (?:a )?(?:message|text|sms))\b""").containsMatchIn(text)) {
             return ParseOutcome.ProhibitedOrUnsupported(
-                message = "Sending messages or placing calls is not supported in this version."
+                message = "Sending messages directly is not supported yet. Try 'Open Messages' or 'Open WhatsApp'."
             )
         }
 
@@ -302,6 +303,20 @@ class CommandParser {
             }
         }
 
+        // Call contact or number: "call Rahul", "call Mom", "call 9876543210", "make a call to John"
+        val callMatch = Regex(
+            """^(?:please |can you |could you )?(?:call|phone|dial|make a call to) ([a-zA-Z0-9+\s\-]{2,40})$"""
+        ).find(text)
+        if (callMatch != null) {
+            val target = callMatch.groupValues[1].trim()
+            if (target.isNotEmpty() && !isSettingKeyword(target.lowercase())) {
+                return ParseOutcome.Matched(
+                    action = AssistantAction.PlaceCall(target),
+                    summaryForUser = "Opening phone dialer to call $target."
+                )
+            }
+        }
+
         return null
     }
 
@@ -310,12 +325,20 @@ class CommandParser {
             text.contains("wifi") ||
                 text.contains("wi-fi") ||
                 text.contains("wi fi") ||
+                text.contains("wireless") ||
+                text.contains("connect to internet") ||
+                text.contains("connect to wifi") ||
+                text.contains("hotel wifi") ||
                 text.contains("wireless network") -> ParseOutcome.Matched(
                 action = AssistantAction.OpenSetting(SettingDestination.WIFI),
                 summaryForUser = "Opening Wi-Fi settings."
             )
 
-            text.contains("bluetooth") || text.contains("blue tooth") -> ParseOutcome.Matched(
+            text.contains("bluetooth") ||
+                text.contains("blue tooth") ||
+                text.contains("headphone") ||
+                text.contains("hearing aid") ||
+                text.contains("earbud") -> ParseOutcome.Matched(
                 action = AssistantAction.OpenSetting(SettingDestination.BLUETOOTH),
                 summaryForUser = "Opening Bluetooth settings."
             )
@@ -331,6 +354,8 @@ class CommandParser {
 
             text.contains("accessibility") ||
                 text.contains("talkback") ||
+                text.contains("screen reader") ||
+                text.contains("magnifier") ||
                 text.contains("make text bigger") ||
                 text.contains("make the text bigger") ||
                 text.contains("make writing bigger") ||
@@ -345,22 +370,40 @@ class CommandParser {
                 text.contains("text size") ||
                 text.contains("font size") ||
                 text.contains("screen size") ||
-                text.contains("dark mode") -> ParseOutcome.Matched(
+                text.contains("dark mode") ||
+                text.contains("cant see") ||
+                text.contains("can't see") ||
+                text.contains("cannot see") ||
+                text.contains("screen is too") ||
+                text.contains("screen too") ||
+                text.contains("unable to read") ||
+                text.contains("read the text") ||
+                text.contains("make screen") ||
+                text.contains("hurt my eyes") ||
+                text.contains("hurting my eyes") -> ParseOutcome.Matched(
                 action = AssistantAction.OpenSetting(SettingDestination.DISPLAY),
-                summaryForUser = "Opening Display settings."
+                summaryForUser = "Opening Display settings to adjust screen brightness and readability."
             )
 
             text.contains("sound") ||
                 text.contains("volume") ||
                 text.contains("ringtone") ||
                 text.contains("ringer") ||
-                text.contains("loudness") -> ParseOutcome.Matched(
+                text.contains("loudness") ||
+                text.contains("cant hear") ||
+                text.contains("can't hear") ||
+                text.contains("cannot hear") ||
+                text.contains("too quiet") ||
+                text.contains("too soft") -> ParseOutcome.Matched(
                 action = AssistantAction.OpenSetting(SettingDestination.SOUND),
-                summaryForUser = "Opening Sound settings."
+                summaryForUser = "Opening Sound settings to adjust volume."
             )
 
             text.contains("battery") ||
-                text.contains("power saver") -> ParseOutcome.Matched(
+                text.contains("power saver") ||
+                text.contains("phone is dying") ||
+                text.contains("save battery") ||
+                text.contains("low battery") -> ParseOutcome.Matched(
                 action = AssistantAction.OpenSetting(SettingDestination.BATTERY),
                 summaryForUser = "Opening Battery settings."
             )
@@ -376,6 +419,33 @@ class CommandParser {
 
             else -> null
         }
+    }
+
+    private fun parseAppCommand(text: String): ParseOutcome.Matched? {
+        val openAppMatch = Regex(
+            """^(?:please |can you |could you )?(?:open|launch|start|show|go to) ([a-zA-Z0-9\s]{2,30})$"""
+        ).find(text)
+        if (openAppMatch != null) {
+            val appCandidate = openAppMatch.groupValues[1].trim()
+            if (!isSettingKeyword(appCandidate) &&
+                appCandidate != "settings" &&
+                appCandidate != "home" &&
+                appCandidate != "recents" &&
+                appCandidate != "back"
+            ) {
+                if (appCandidate == "contacts" || appCandidate == "phonebook") {
+                    return ParseOutcome.Matched(
+                        action = AssistantAction.OpenApp(SupportedApp.CONTACTS),
+                        summaryForUser = "Opening Contacts."
+                    )
+                }
+                return ParseOutcome.Matched(
+                    action = AssistantAction.OpenNamedApp(appCandidate),
+                    summaryForUser = "Opening $appCandidate."
+                )
+            }
+        }
+        return null
     }
 
     private fun isSettingKeyword(word: String): Boolean {

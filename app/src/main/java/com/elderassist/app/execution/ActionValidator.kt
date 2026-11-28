@@ -51,7 +51,9 @@ class ActionValidator(
                 }
             }
 
-            is AssistantAction.OpenApp -> ValidationResult.Valid(plan)
+            is AssistantAction.OpenApp,
+            is AssistantAction.OpenNamedApp,
+            is AssistantAction.PlaceCall -> ValidationResult.Valid(plan)
 
             AssistantAction.GoHome,
             AssistantAction.GoBack,

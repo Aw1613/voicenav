@@ -45,7 +45,7 @@ android {
 
         val geminiApiKey = readSecret("GEMINI_API_KEY").replace("\"", "\\\"")
         buildConfigField("String", "GEMINI_API_KEY", "\"$geminiApiKey\"")
-        val geminiModel = readSecret("GEMINI_MODEL").ifEmpty { "gemini-2.5-flash" }
+        val geminiModel = readSecret("GEMINI_MODEL").ifEmpty { "gemini-3.5-flash-lite" }
         buildConfigField("String", "GEMINI_MODEL", "\"$geminiModel\"")
     }
 

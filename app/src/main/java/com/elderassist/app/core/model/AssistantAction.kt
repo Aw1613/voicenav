@@ -56,6 +56,15 @@ sealed interface AssistantAction {
         val app: SupportedApp
     ) : AssistantAction
 
+    data class OpenNamedApp(
+        val appName: String,
+        val packageName: String? = null
+    ) : AssistantAction
+
+    data class PlaceCall(
+        val recipient: String
+    ) : AssistantAction
+
     data object GoHome : AssistantAction
     data object GoBack : AssistantAction
     data object OpenRecents : AssistantAction

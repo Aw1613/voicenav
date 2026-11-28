@@ -51,7 +51,8 @@ class AppContainer(context: Context) {
         validator = actionValidator,
         settingsHandler = settingsHandler,
         contactsHandler = contactsHandler,
-        accessibilityExecutor = accessibilityExecutor
+        accessibilityExecutor = accessibilityExecutor,
+        intentExecutor = intentExecutor
     )
     val taskRunner = TaskRunner(actionDispatcher, ActionVerifier())
 
